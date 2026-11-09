@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ETERNAL PIXEL – Prototype</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0d14;overflow:hidden;touch-action:none;user-select:none}
+  #game{position:fixed;inset:0}
+  #touch{display:none}
+  @media (pointer:coarse){#touch{display:block}}
+  #stick{position:fixed;left:24px;bottom:24px;width:130px;height:130px;border-radius:50%;background:#ffffff22;border:2px solid #ffffff44}
+  #knob{position:absolute;left:45px;top:45px;width:40px;height:40px;border-radius:50%;background:#ffffff88}
+  .btn{position:fixed;width:64px;height:64px;border-radius:50%;border:2px solid #ffffff66;background:#ffffff22;color:#fff;font:600 13px sans-serif}
+  #bAtk{right:28px;bottom:36px;width:84px;height:84px}
+  #bSkill{right:124px;bottom:36px}
+  #bDodge{right:28px;bottom:136px}
+  #bAuto{right:104px;bottom:112px;width:56px;height:56px}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="touch">
+  <div id="stick"><div id="knob"></div></div>
+  <button class="btn" id="bAtk">Đánh</button>
+  <button class="btn" id="bSkill">Lửa</button>
+  <button class="btn" id="bDodge">Né</button>
+  <button class="btn" id="bAuto">Auto</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
