@@ -26,7 +26,8 @@ export const fmt = a => `+${a.v}${PCT_TYPES.has(a.type) ? '%' : ''} ${LABEL[a.ty
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const val = (t, L, m = 1) => FLAT[t] ? Math.round((FLAT[t][0] * L + FLAT[t][1]) * rnd(0.9, 1.1) * m) : +(rnd(...PCT[t]) * m).toFixed(1);
-const uid = () => 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+let seq = 0; // bộ đếm tránh trùng instanceId khi sinh nhiều món trong cùng 1 ms (GDD 42)
+const uid = () => 'i' + Date.now().toString(36) + (seq++).toString(36) + Math.random().toString(36).slice(2, 6);
 
 export function genItem(L, ri, kind, set) {
   kind = kind || KINDS[Math.floor(Math.random() * KINDS.length)];
@@ -88,7 +89,7 @@ export function unequip(G, s) {
 export function derive(c, G, CFG) {
   const t = { atk: 0, def: 0, hp: 0, crit_rate: 0, crit_damage: 0, lifesteal: 0, dodge: 0, exp_bonus: 0, gold_bonus: 0, atk_pct: 0, hp_pct: 0, skill_dmg: 0, cdr: 0, heal_kill: 0, boss_dmg: 0, dragon_fire: 0 };
   const add = a => { if (a && t[a.type] !== undefined) t[a.type] += a.v; };
-  Object.values(G.eq).forEach(it => { if (it) { add({ type: it.main.type, v: it.main.v * (1 + 0.05 * (it.enh || 0)) }); it.affixes.forEach(add); } });
+  Object.values(G.eq).forEach(it => { if (it) { add({ type: it.main.type, v: it.main.v * (1 + 0.05 * (it.enh || 0)) * (it.trans ? 1.25 : 1) }); it.affixes.forEach(add); if (it.awaken) add(it.awaken); } });
   const cnt = {};
   Object.values(G.eq).forEach(it => { if (it && it.set) cnt[it.set] = (cnt[it.set] || 0) + 1; });
   for (const k in cnt) { const sd = SETS[k]; if (sd) for (const th in sd.bonus) if (cnt[k] >= +th) for (const st in sd.bonus[th]) t[st] += sd.bonus[th][st]; }
@@ -100,7 +101,7 @@ export function derive(c, G, CFG) {
   G.deck.forEach(id => { const d = CARDS[id]; if (d && d.type && G.cards.some(x => x.t === id)) ty[d.type] = (ty[d.type] || 0) + 1; });
   for (const k in ty) { const r = RESONANCE[k]; if (r) for (const th in r) if (ty[k] >= +th) for (const st in r[th]) t[st] += r[th][st]; }
   const pet = PETS[G.pet];
-  if (pet && G.q[pet.unlock] && G.q[pet.unlock].done) for (const k in pet.bonus) t[k] += pet.bonus[k];
+  if (pet && G.q[pet.unlock] && G.q[pet.unlock].done) for (const k in pet.bonus) t[k] += pet.bonus[k] * (1 + 0.1 * (((G.petLv || {})[G.pet] || 1) - 1));
   const sk = G.sk || {}; // kỹ năng bị động
   t.atk_pct += 4 * (sk.power || 0); t.hp_pct += 5 * (sk.vital || 0); t.crit_rate += sk.crit || 0;
   t.skill_dmg += 6 * (sk.arcane || 0); t.cdr += 3 * (sk.haste || 0);
@@ -126,7 +127,7 @@ export const SETS = { dragon: { name: 'Dragon Knight', bonus: { 2: { hp_pct: 10 
 // Cường hóa +1..+20: không phá hủy đồ; thất bại cộng bảo hiểm +5% tỷ lệ lần sau (GDD 17)
 export function enhanceInfo(it) {
   const n = it.enh || 0;
-  if (n >= 20) return null;
+  if (n >= (it.trans ? 25 : 20)) return null; // Transcend nâng trần cường hóa lên +25
   const base = n < 5 ? 90 : n < 10 ? 70 : n < 15 ? 45 : 25;
   return { rate: Math.min(95, base + 5 * (it.fail || 0)), cost: Math.round(40 * (n + 1) * (1 + it.ri * 0.5) * Math.max(1, it.lv / 5)) };
 }
@@ -203,3 +204,21 @@ export const PETS = {
   ember: { name: 'Tiểu Hỏa', unlock: 'q6', color: 0xff7a1a, bonus: { atk_pct: 3 }, shoot: true, desc: '+3% ATK, bắn hỗ trợ mỗi 2 giây' },
   frostling: { name: 'Băng Linh', unlock: 'q8', color: 0x9fd8ff, bonus: { hp_pct: 8 }, desc: '+8% HP' },
 };
+
+// Tiến hóa ngoại hình (GDD 10.2): chỉ thay đổi hình ảnh, không tăng sức mạnh; người chơi có thể giữ ngoại hình cũ
+export const LOOK_LV = [1, 15, 40, 70, 100];
+export const LOOK_NAMES = ['Basic', 'Advanced', 'Elite', 'Legendary', 'Mythic'];
+export const lookStage = G => {
+  const max = LOOK_LV.filter(l => G.level >= l).length - 1;
+  return G.look == null ? max : Math.min(G.look, max);
+};
+
+// Awaken (mở 1 thuộc tính đặc biệt) và Transcend (đột phá trang bị cao cấp) – GDD 17
+export const AW = { boss_dmg: ['Boss Damage', 4, 10], skill_dmg: ['Skill Damage', 6, 15], cdr: ['Cooldown Reduction', 2, 5], heal_kill: ['HP/Kill', 0.5, 1.5] };
+export const awakenCost = it => ({ gold: Math.round(150 * (1 + it.ri) * Math.max(1, it.lv / 5)), stone: 10 * (1 + it.ri) });
+export function rollAwaken() {
+  const ks = Object.keys(AW), type = ks[Math.floor(Math.random() * ks.length)], [, lo, hi] = AW[type];
+  return { type, v: +(lo + Math.random() * (hi - lo)).toFixed(1) };
+}
+export const fmtAw = a => `+${a.v}% ${AW[a.type][0]}`;
+export const TRANS = { gold: 5000, stone: 300, enh: 15 };

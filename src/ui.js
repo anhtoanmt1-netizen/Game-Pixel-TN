@@ -1,4 +1,4 @@
-import { RARITY, SLOTS, SLOT_NAME, CARDS, DECK_SIZE, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, CARD_CAP, cardLvCost, EVO, STONE, RECIPES, ACHS, genItem, PETS, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix } from './items.js';
+import { RARITY, SLOTS, SLOT_NAME, CARDS, DECK_SIZE, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, CARD_CAP, cardLvCost, EVO, STONE, RECIPES, ACHS, genItem, PETS, awakenCost, rollAwaken, fmtAw, TRANS, LOOK_LV, LOOK_NAMES, lookStage, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix } from './items.js';
 import { exportJSON, importJSON } from './save.js';
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,8 +17,8 @@ export function initUI(G, { onChange }) {
   const panel = document.createElement('div'); panel.id = 'inv';
   document.body.append(btn, panel);
 
-  const itemHtml = (it, extra, ref) => `<div class="row"><b style="color:${col(it.ri)}">${esc(it.name)}${it.enh ? ' +' + it.enh : ''}${it.locked ? ' 🔒' : ''}</b> <small>Lv.${it.lv} · ${fmt(it.main)}${it.set && SETS[it.set] ? ' · Bộ ' + esc(SETS[it.set].name) : ''}</small>
-    <small>${it.affixes.map((a, n) => (n + 1) + '. ' + esc(fmt(a))).join('<br>') || '—'}</small>${extra}<button data-a="enh" data-r="${ref}">Cường hóa</button><button data-a="rr" data-r="${ref}">Đổi dòng</button></div>`;
+  const itemHtml = (it, extra, ref) => `<div class="row"><b style="color:${col(it.ri)}">${esc(it.name)}${it.enh ? ' +' + it.enh : ''}${it.trans ? ' ⬆' : ''}${it.locked ? ' 🔒' : ''}</b> <small>Lv.${it.lv} · ${fmt(it.main)}${it.set && SETS[it.set] ? ' · Bộ ' + esc(SETS[it.set].name) : ''}</small>
+    <small>${it.affixes.map((a, n) => (n + 1) + '. ' + esc(fmt(a))).join('<br>') || '—'}</small>${it.awaken ? `<small style="color:#ffd34d">✦ ${esc(fmtAw(it.awaken))}</small>` : ''}${extra}<button data-a="enh" data-r="${ref}">Cường hóa</button><button data-a="rr" data-r="${ref}">Đổi dòng</button>${it.ri >= 2 && !it.awaken ? `<button data-a="aw" data-r="${ref}">Thức tỉnh</button>` : ''}${it.ri >= 4 && !it.trans ? `<button data-a="tr" data-r="${ref}">Đột phá</button>` : ''}</div>`;
 
   function render() {
     const gear = SLOTS.map(s => {
@@ -43,7 +43,8 @@ export function initUI(G, { onChange }) {
         <button data-a="skreset">Đặt lại (${50 * G.level} vàng)</button>
         <h3>Chế tạo · Đá nâng cấp: ${G.mat.stone}</h3>${RECIPES.map((r, k) => `<button data-a="craft" data-k="${k}">${r.name} (${r.stone} đá + ${r.gold} vàng)</button>`).join('')}
         <h3>Thành tựu</h3>${ACHS.map(a => `<div class="row">${G.ach[a.id] ? '✅' : '⬜'} <b>${a.name}</b> <small>${a.desc} · +${a.gold} vàng</small></div>`).join('')}
-        <h3>Thú đồng hành</h3>${Object.entries(PETS).map(([k, p]) => { const ok = G.q[p.unlock] && G.q[p.unlock].done; return `<div class="row"><b>${p.name}</b> <small>${p.desc}${ok ? '' : ' · khóa: hoàn thành nhiệm vụ ' + p.unlock}</small>${ok ? `<button data-a="pet" data-k="${k}">${G.pet === k ? 'Cất đi' : 'Mang theo'}</button>` : ''}</div>`; }).join('')}
+        <h3>Ngoại hình</h3>${LOOK_NAMES.map((n, i) => G.level >= LOOK_LV[i] ? `<button data-a="look" data-k="${i}">${lookStage(G) === i ? '● ' : ''}${n}</button>` : `<small>${n}: mở ở Lv.${LOOK_LV[i]}</small>`).join(' ')}
+        <h3>Thú đồng hành</h3>${Object.entries(PETS).map(([k, p]) => { const ok = G.q[p.unlock] && G.q[p.unlock].done; return `<div class="row"><b>${p.name}</b> <small>${p.desc}${ok ? '' : ' · khóa: hoàn thành nhiệm vụ ' + p.unlock}</small>${ok ? `<button data-a="pet" data-k="${k}">${G.pet === k ? 'Cất đi' : 'Mang theo'}</button><button data-a="plv" data-k="${k}">Cấp ${(G.petLv && G.petLv[k]) || 1}/10 · nâng (${200 * ((G.petLv && G.petLv[k]) || 1)} vàng)</button>` : ''}</div>`; }).join('')}
         <h3>Cài đặt</h3><button data-a="set" data-k="sfx">Âm thanh: ${G.set.sfx ? 'Bật' : 'Tắt'}</button><button data-a="set" data-k="music">Nhạc: ${G.set.music ? 'Bật' : 'Tắt'}</button><button data-a="set" data-k="vol">Âm lượng: ${Math.round(G.set.vol * 100)}%</button><button data-a="set" data-k="lowfx">Giảm hiệu ứng: ${G.set.lowfx ? 'Bật' : 'Tắt'}</button>
         <h3>Sao lưu</h3><button data-a="exp">Xuất backup</button><button data-a="imp">Nhập backup</button></div></div>`;
   }
@@ -51,6 +52,25 @@ export function initUI(G, { onChange }) {
   panel.addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
     const a = b.dataset.a, it = G.inv[+b.dataset.i];
+    if (a === 'aw' || a === 'tr') {
+      const r = b.dataset.r, t = r[0] === 's' ? G.eq[r.slice(2)] : G.inv[+r.slice(2)];
+      if (!t) return;
+      if (a === 'aw') {
+        if (t.awaken) return alert('Trang bị đã thức tỉnh.');
+        if (t.ri < 2) return alert('Cần trang bị từ Rare trở lên.');
+        const c = awakenCost(t);
+        if (G.gold < c.gold || G.mat.stone < c.stone) return alert(`Không đủ nguyên liệu (cần ${c.gold} vàng + ${c.stone} đá).`);
+        if (!confirm(`Thức tỉnh? Chi phí ${c.gold} vàng + ${c.stone} đá. Nhận 1 thuộc tính đặc biệt ngẫu nhiên.`)) return;
+        G.gold -= c.gold; G.mat.stone -= c.stone; t.awaken = rollAwaken();
+      } else {
+        if (t.trans) return;
+        if (t.ri < 4 || (t.enh || 0) < TRANS.enh) return alert(`Cần trang bị Legendary trở lên và cường hóa +${TRANS.enh}.`);
+        if (G.gold < TRANS.gold || G.mat.stone < TRANS.stone) return alert('Không đủ vàng hoặc đá.');
+        if (!confirm(`Đột phá? Chi phí ${TRANS.gold} vàng + ${TRANS.stone} đá. Chỉ số chính ×1,25 và trần cường hóa lên +25.`)) return;
+        G.gold -= TRANS.gold; G.mat.stone -= TRANS.stone; t.trans = true;
+      }
+      onChange(); return render();
+    }
     if (a === 'enh' || a === 'rr') {
       const r = b.dataset.r, t = r[0] === 's' ? G.eq[r.slice(2)] : G.inv[+r.slice(2)];
       if (!t) return;
@@ -82,6 +102,14 @@ export function initUI(G, { onChange }) {
       if (it.ri === 6 && !confirm('Vật phẩm ANCIENT – xác nhận lần hai để bán?')) return;
       G.gold += Math.round((1 + it.ri) * it.lv * 2);
       G.inv.splice(+b.dataset.i, 1);
+    } else if (a === 'look') {
+      G.look = +b.dataset.k;
+    } else if (a === 'plv') {
+      G.petLv = G.petLv || {}; const k = b.dataset.k, lv = G.petLv[k] || 1;
+      if (lv >= 10) return alert('Thú đã đạt cấp tối đa.');
+      const c = 200 * lv;
+      if (G.gold < c) return alert(`Không đủ vàng (cần ${c}).`);
+      G.gold -= c; G.petLv[k] = lv + 1;
     } else if (a === 'pet') {
       G.pet = G.pet === b.dataset.k ? null : b.dataset.k;
     } else if (a === 'set') {

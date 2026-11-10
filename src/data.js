@@ -154,3 +154,17 @@ AREAS.survival = {
   checkpoints: [{ x: 900, y: 600, name: 'Trung tâm' }], spawns: [],
   portal: { x: 150, y: 1100, to: 'tower' },
 };
+
+// ---- Sảnh Thử Thách: gom các chế độ (Tháp, Sinh Tồn, Boss Challenge, Elite Rift, Phụ Bản Hàng Ngày)
+AREAS.forest.portal2.to = 'hub';
+AREAS.tower.portal.to = 'hub'; delete AREAS.tower.portal2;
+AREAS.survival.portal.to = 'hub';
+const back = { x: 150, y: 1100, to: 'hub' }, mid = [{ x: 900, y: 1000, name: 'Điểm nghỉ' }];
+AREAS.hub = {
+  name: 'Sảnh Thử Thách', tile: 'cave', obst: 'rock', checkpoints: [{ x: 900, y: 900, name: 'Sảnh' }], spawns: [],
+  portal: { x: 150, y: 1100, to: 'forest' },
+  extra: [{ x: 300, y: 500, to: 'tower' }, { x: 600, y: 500, to: 'survival' }, { x: 900, y: 500, to: 'bossrush' }, { x: 1200, y: 500, to: 'rift' }, { x: 1500, y: 500, to: 'daily' }],
+};
+AREAS.bossrush = { name: 'Thử Thách Boss', mode: 'bossrush', tile: 'lava', obst: 'obsid', need: 'q4', checkpoints: mid, spawns: [], portal: back };
+AREAS.rift = { name: 'Khe Nứt Tinh Anh', mode: 'rift', tile: 'void', obst: 'voidobs', need: 'q6', checkpoints: mid, spawns: [], portal: back };
+AREAS.daily = { name: 'Phụ Bản Hàng Ngày', mode: 'daily', tile: 'ice', obst: 'iceobs', need: 'q2', checkpoints: mid, spawns: [], portal: back };

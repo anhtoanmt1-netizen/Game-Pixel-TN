@@ -1,13 +1,14 @@
 import { CFG, CLASSES, SKILLS, MONSTERS, AREAS, QUESTS } from './data.js';
 import { calcDamage, rollCrit, rollDodge } from './combat.js';
 import { TOUCH } from './touch.js';
-import { PETS, ACHS, RARITY, CARDS, derive, expNeed, genItem, rollRarity, addCard } from './items.js';
+import { lookStage, PETS, ACHS, RARITY, CARDS, derive, expNeed, genItem, rollRarity, addCard } from './items.js';
 import { save, load } from './save.js';
 import { initUI, pickClass } from './ui.js';
 import { initAudio, sfx } from './audio.js';
+import { buildSprites } from './sprites.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
-const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false }, pet: null }, await load() || {});
+const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false }, pet: null, look: null, petLv: {} }, await load() || {});
 if (!G.classId) { G.classId = await pickClass(CLASSES); await save(G); }
 CFG.classId = G.classId;
 G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, ...G.set };
@@ -17,6 +18,9 @@ const CHECKPOINTS = AREA.checkpoints, SPAWNS = AREA.spawns;
 const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
 
 const scaled = (d, k) => ({ ...d, hp: Math.round(d.hp * k), atk: Math.round(d.atk * k), exp: Math.round(d.exp * k), gold: Math.round(d.gold * k) });
+
+const FLOOR_MODES = ['tower', 'bossrush', 'rift', 'daily'];
+const recKey = m => (m === 'tower' ? 'best' : 'rec_' + m);
 
 class GameScene extends Phaser.Scene {
   constructor() { super('game'); }
@@ -51,6 +55,7 @@ class GameScene extends Phaser.Scene {
     tex('shade', 28, 28, g => { g.fillStyle(0x4a2a6a).fillCircle(14, 14, 11); g.fillStyle(0xff4aff).fillRect(9, 10, 4, 4).fillRect(16, 10, 4, 4); });
     tex('ma_vuong', 88, 88, g => { g.fillStyle(0x2a0f3a).fillRoundedRect(6, 10, 76, 70, 20); g.fillStyle(0xff4040).fillRect(30, 30, 10, 10).fillRect(50, 30, 10, 10); g.fillStyle(0x8a3fd0).fillTriangle(10, 10, 22, 0, 34, 10).fillTriangle(54, 10, 66, 0, 78, 10); });
     g.destroy();
+    buildSprites(this, CFG.classId); // thay hình khối tạm bằng pixel art (cùng tên texture)
   }
 
   create() {
@@ -61,14 +66,17 @@ class GameScene extends Phaser.Scene {
 
     // Điểm hồi sinh
     CHECKPOINTS.forEach(c => this.add.image(c.x, c.y, 'cp').setDepth(1));
-    this.portals = [AREA.portal, AREA.portal2].filter(Boolean); this.portalT = 0;
-    this.portals.forEach(p => this.add.image(p.x, p.y, 'portal').setDepth(1));
+    this.portals = [AREA.portal, AREA.portal2, ...(AREA.extra || [])].filter(Boolean); this.portalT = 0;
+    this.portals.forEach(p => {
+      this.add.image(p.x, p.y, 'portal').setDepth(1);
+      this.add.text(p.x, p.y + 34, AREAS[p.to].name, { fontFamily: 'monospace', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(2);
+    });
 
     // Cây (vật cản) – sinh theo số giả ngẫu nhiên cố định
     this.trees = this.physics.add.staticGroup();
     let seed = 7;
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const keepClear = [...CHECKPOINTS, ...SPAWNS, AREA.portal, ...(AREA.portal2 ? [AREA.portal2] : [])];
+    const keepClear = [...CHECKPOINTS, ...SPAWNS, AREA.portal, ...(AREA.portal2 ? [AREA.portal2] : []), ...(AREA.extra || [])];
     for (let i = 0; i < 70; i++) {
       const x = 40 + rnd() * (W - 80), y = 40 + rnd() * (H - 80);
       if (keepClear.some(c => Math.hypot(c.x - x, c.y - y) < 130)) continue;
@@ -101,7 +109,7 @@ class GameScene extends Phaser.Scene {
     this.enemies = this.physics.add.group();
     this.projs = this.physics.add.group();
     SPAWNS.forEach(s => this.spawn(s.id, s.x, s.y));
-    if (AREA.mode === 'tower') { this.floor = 0; this.floorWait = false; this.nextFloor(); }
+    if (FLOOR_MODES.includes(AREA.mode)) { this.floor = 0; this.floorWait = false; this.nextFloor(); }
     if (AREA.mode === 'survival') { this.wave = 0; this.waveT = 3; }
     this.physics.add.collider(this.p, this.trees);
     this.physics.add.collider(this.enemies, this.trees);
@@ -172,8 +180,9 @@ class GameScene extends Phaser.Scene {
 
   dropLoot(e) {
     const boss = e.d.boss, out = [];
-    const n = boss ? 2 : (Math.random() < 0.45 ? 1 : 0);
-    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : 0), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined) });
+    const rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
+    const n = boss ? 2 : (rift || Math.random() < 0.45 ? 1 : 0);
+    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0)), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined) });
     if (Math.random() < (boss ? 1 : 0.1)) out.push({ card: e.id });
     const extra = Object.keys(CARDS).filter(k => CARDS[k].kind); // thẻ kỹ năng / di vật
     if (Math.random() < (boss ? 0.6 : 0.04)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });
@@ -360,6 +369,14 @@ class GameScene extends Phaser.Scene {
   }
 
   // ---------- Người chơi ----------
+  drawAura() { // ngoại hình tiến hóa: chỉ là hiệu ứng hình ảnh
+    const st = lookStage(G); if (!st) return;
+    const cols = [0, 0x6fb6ff, 0x6ee7ff, 0xffd34d, 0xff4aff], c = cols[st], p = this.p;
+    const r = 18 + (st >= 4 ? 3 * Math.sin(this.time.now / 200) : 0);
+    this.gfx.lineStyle(2, c, 0.8).strokeCircle(p.x, p.y, r);
+    if (st >= 2) this.gfx.fillStyle(c, 0.12).fillCircle(p.x, p.y, r + 4);
+  }
+
   syncPet() {
     const def = PETS[G.pet], ok = def && G.q[def.unlock] && G.q[def.unlock].done;
     if (this.pet && (!ok || this.petId !== G.pet)) { this.pet.destroy(); this.pet = null; }
@@ -390,12 +407,18 @@ class GameScene extends Phaser.Scene {
   }
 
   nextFloor() {
-    const f = ++this.floor, tier = Math.min(4, Math.floor((f - 1) / 5)), sc = 1 + 0.2 * (f - 1);
+    const f = ++this.floor, m = AREA.mode;
     const mobs = ['wolf', 'spider', 'imp', 'frost_wolf', 'shade'], bosses = ['wolf_king', 'spider_queen', 'fire_dragon', 'ice_king', 'ma_vuong'];
-    const boss = f % 5 === 0, n = boss ? 4 : Math.min(12, 3 + f);
-    for (let i = 0; i < n; i++) this.spawn(mobs[tier], Phaser.Math.Between(400, 1500), Phaser.Math.Between(200, 800), true, sc);
+    let tier = Math.min(4, Math.floor((f - 1) / 5)), sc = 1 + 0.2 * (f - 1), boss = f % 5 === 0, n = boss ? 4 : Math.min(12, 3 + f), elite = false;
+    if (m === 'bossrush') { tier = (f - 1) % 5; sc = 1 + 0.15 * Math.floor((f - 1) / 5); boss = true; n = 0; } // lần lượt từng boss
+    if (m === 'rift') { sc = 2 + 0.3 * (f - 1); elite = true; } // quái tinh anh, độ khó cao
+    if (m === 'daily') { tier = Math.min(4, Math.floor(G.level / 20)); sc = 1 + 0.15 * (f - 1); boss = f === 5; n = boss ? 3 : 3 + f; }
+    for (let i = 0; i < n; i++) {
+      const e = this.spawn(mobs[tier], Phaser.Math.Between(400, 1500), Phaser.Math.Between(200, 800), true, sc);
+      if (elite) e.setTint(0xffb0b0);
+    }
     if (boss) this.spawn(bosses[tier], 900, 300, true, sc);
-    this.msg(`Tầng ${f}${boss ? ' – BOSS' : ''}`);
+    this.msg(`Tầng ${f}${boss ? ' – BOSS' : ''}${elite ? ' (Tinh anh)' : ''}`);
   }
 
   questDone(id) { return !!(G.q[id] && G.q[id].done); }
@@ -412,7 +435,7 @@ class GameScene extends Phaser.Scene {
   }
 
   questText() {
-    if (AREA.mode === 'tower') return `Tầng ${this.floor} · Kỷ lục ${G.st.best || 0}`;
+    if (FLOOR_MODES.includes(AREA.mode)) return `Tầng ${this.floor} · Kỷ lục ${G.st[recKey(AREA.mode)] || 0}`;
     if (AREA.mode === 'survival') return `Đợt ${this.wave} · Kỷ lục ${G.st.surv || 0}`;
     const q = QUESTS.find(x => !this.questDone(x.id) && (!x.after || this.questDone(x.after)));
     return q ? `Nhiệm vụ: ${q.name} ${(G.q[q.id] || { p: 0 }).p}/${q.n}` : 'Đã hoàn thành mọi nhiệm vụ';
@@ -570,6 +593,7 @@ class GameScene extends Phaser.Scene {
     this.projs.getChildren().slice().forEach(pr => { pr.life -= dt; if (pr.life <= 0) pr.destroy(); });
     this.updateTelegraphs(dt);
     this.drawBars();
+    this.drawAura();
     this.updateDrops();
     this.updatePortal(dt);
     this.updatePet(dt);
@@ -577,11 +601,23 @@ class GameScene extends Phaser.Scene {
     // Bộ Dragon Knight 6 món: Hỏa Long phun lửa quanh người mỗi 8 giây
     this.dragonT = this.ps.dragonFire ? (this.dragonT || 0) + dt : 0;
     if (this.dragonT >= 8 && !this.playerDead) { this.dragonT = 0; this.meleeHit(3.0, 130); this.msg('Hỏa Long phun lửa!'); }
-    if (AREA.mode === 'tower' && !this.floorWait && !this.playerDead && !this.enemies.getChildren().some(e => e.active && !e.dead)) {
+    if (FLOOR_MODES.includes(AREA.mode) && !this.floorWait && !this.playerDead && !this.enemies.getChildren().some(e => e.active && !e.dead)) {
       this.floorWait = true;
-      const f = this.floor; G.st.best = Math.max(G.st.best || 0, f);
-      G.gold += 20 * f; G.mat.stone += f; this.persist(); // thưởng vàng + đá nâng cấp theo tầng
-      this.msg(`Hoàn thành tầng ${f}! +${20 * f} vàng, +${f} đá`);
+      const f = this.floor, m = AREA.mode, k = recKey(m);
+      G.st[k] = Math.max(G.st[k] || 0, f);
+      if (m === 'daily') { // phụ bản hàng ngày: 5 tầng, thưởng lớn 1 lần mỗi ngày (không bắt buộc)
+        if (f >= 5) {
+          const today = new Date().toISOString().slice(0, 10);
+          if (G.st.daily !== today) { G.st.daily = today; G.gold += 1500; G.mat.stone += 150; this.msg('Hoàn thành phụ bản ngày! +1500 vàng, +150 đá'); }
+          else this.msg('Hoàn thành! Hôm nay bạn đã nhận thưởng phụ bản.');
+          this.persist(); return; // dừng tại đây, quay về qua cổng
+        }
+      } else {
+        const gold = (m === 'bossrush' ? 100 : m === 'rift' ? 40 : 20) * f, stone = (m === 'bossrush' ? 5 : m === 'rift' ? 2 : 1) * f;
+        G.gold += gold; G.mat.stone += stone;
+        this.msg(`Hoàn thành tầng ${f}! +${gold} vàng, +${stone} đá`);
+      }
+      this.persist();
       this.time.delayedCall(2000, () => { this.floorWait = false; this.nextFloor(); });
     }
     this.achT = (this.achT || 0) + dt;
