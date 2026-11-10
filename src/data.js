@@ -168,3 +168,11 @@ AREAS.hub = {
 AREAS.bossrush = { name: 'Thử Thách Boss', mode: 'bossrush', tile: 'lava', obst: 'obsid', need: 'q4', checkpoints: mid, spawns: [], portal: back };
 AREAS.rift = { name: 'Khe Nứt Tinh Anh', mode: 'rift', tile: 'void', obst: 'voidobs', need: 'q6', checkpoints: mid, spawns: [], portal: back };
 AREAS.daily = { name: 'Phụ Bản Hàng Ngày', mode: 'daily', tile: 'ice', obst: 'iceobs', need: 'q2', checkpoints: mid, spawns: [], portal: back };
+
+// ---- Bản đồ lớn hơn một chút (khớp lưới ô 48px), quái thường nhân đôi, hồi sinh nhanh hơn
+CFG.world.w = 1824;
+for (const a of Object.values(AREAS)) { // nhân đôi quái thường ở mỗi bản đồ (boss giữ nguyên 1 con)
+  const extra = a.spawns.filter(s => !MONSTERS[s.id].boss).map(s => ({ id: s.id, x: Math.min(CFG.world.w - 80, s.x + 90), y: Math.min(CFG.world.h - 80, s.y + 70) }));
+  a.spawns = [...a.spawns, ...extra];
+}
+Object.values(MONSTERS).forEach(m => { m.respawn = Math.max(5, Math.round(m.respawn * 0.4)); }); // 20s → 8s, boss 60s → 24s

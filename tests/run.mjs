@@ -5,6 +5,9 @@ import * as I from '../src/items.js';
 import { CFG, CLASSES, MONSTERS, AREAS, QUESTS } from '../src/data.js';
 import { valid } from '../src/save.js';
 import { MAPS, DEFS, CLASS_PAL } from '../src/sprites.js';
+import { generateLayout, AREA_THEME } from '../src/maps.js';
+import { THEMES, CELL } from '../src/themes.js';
+import fs from 'node:fs';
 
 let pass = 0, fail = 0;
 const test = (name, fn) => { try { fn(); pass++; console.log('  ok  ' + name); } catch (e) { fail++; console.log('FAIL  ' + name + '\n      ' + e.message); } };
@@ -148,6 +151,35 @@ test('mọi quái và mọi lớp đều có texture tương ứng', () => {
   const keys = new Set(DEFS.map(d => d[0]));
   Object.values(MONSTERS).forEach(m => assert.ok(keys.has(m.tex), m.tex));
   Object.keys(CLASSES).forEach(c => assert.ok(MAPS[c] && CLASS_PAL[c], c));
+});
+
+console.log('Bản đồ');
+const W = CFG.world.w, H = CFG.world.h;
+test('mọi khu vực có chủ đề màu và atlas tồn tại, đủ frame', () => Object.keys(AREAS).forEach(id => {
+  const th = AREA_THEME[id]; assert.ok(THEMES[th], id);
+  const fr = JSON.parse(fs.readFileSync(new URL(`../assets/${th}.json`, import.meta.url))).frames;
+  Object.values(THEMES[th]).flat().forEach(([n]) => assert.ok(fr[n], `${th}:${n}`));
+}));
+test('bố cục bản đồ xác định (cùng khu vực cho cùng kết quả) và phủ kín lưới ô', () => {
+  const a = generateLayout('forest', AREAS.forest, W, H), b = generateLayout('forest', AREAS.forest, W, H);
+  assert.deepEqual(a.props, b.props); assert.equal(a.ground.length, Math.ceil(W / CELL) * Math.ceil(H / CELL));
+});
+test('mọi bản đồ: vật cản không đè điểm cần chừa; người chơi đi được từ điểm xuất phát tới mọi cổng, checkpoint, chỗ quái', () => {
+  Object.keys(AREAS).forEach(id => {
+    const L = generateLayout(id, AREAS[id], W, H), R = 11, G = 24, gw = Math.ceil(W / G), gh = Math.ceil(H / G);
+    const blocked = (x, y) => L.blocks.some(b => Math.abs(x - b.x) < b.w / 2 + R && Math.abs(y - b.y) < b.h / 2 + R);
+    L.keep.forEach(k => assert.ok(!blocked(k.x, k.y), `${id}: điểm (${k.x},${k.y}) bị chặn`));
+    const seen = new Uint8Array(gw * gh), st = AREAS[id].checkpoints[0], q = [[Math.floor(st.x / G), Math.floor(st.y / G)]];
+    seen[q[0][1] * gw + q[0][0]] = 1;
+    while (q.length) { const [cx, cy] = q.pop(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || seen[ny * gw + nx] || blocked(nx * G + G / 2, ny * G + G / 2)) continue; seen[ny * gw + nx] = 1; q.push([nx, ny]); } }
+    L.keep.forEach(k => assert.ok(seen[Math.floor(k.y / G) * gw + Math.floor(k.x / G)], `${id}: không tới được (${k.x},${k.y})`));
+  });
+});
+test('quái thường đã nhân đôi, boss giữ 1 con; hồi sinh nhanh hơn', () => {
+  assert.equal(AREAS.forest.spawns.filter(s => s.id === 'wolf').length, 10);
+  assert.equal(AREAS.cave.spawns.filter(s => s.id === 'spider').length, 12);
+  assert.equal(AREAS.volcano.spawns.filter(s => s.id === 'fire_dragon').length, 1);
+  assert.equal(MONSTERS.wolf.respawn, 8); assert.equal(MONSTERS.wolf_king.respawn, 24);
 });
 
 console.log(`\n${pass} đạt, ${fail} lỗi`);

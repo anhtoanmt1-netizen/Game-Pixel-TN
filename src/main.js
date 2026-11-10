@@ -6,6 +6,7 @@ import { save, load } from './save.js';
 import { initUI, pickClass } from './ui.js';
 import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
+import { buildMap, AREA_THEME } from './maps.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
 const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false }, pet: null, look: null, petLv: {} }, await load() || {});
@@ -13,6 +14,7 @@ if (!G.classId) { G.classId = await pickClass(CLASSES); await save(G); }
 CFG.classId = G.classId;
 G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, ...G.set };
 const AREA = AREAS[G.area] || AREAS.forest;
+const AREA_ID = AREAS[G.area] ? G.area : 'forest';
 const CHECKPOINTS = AREA.checkpoints, SPAWNS = AREA.spawns;
 
 const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
@@ -26,6 +28,11 @@ class GameScene extends Phaser.Scene {
   constructor() { super('game'); }
 
   // ---------- Texture tạm bằng code (thay bằng sprite thật ở giai đoạn Polish) ----------
+  preload() { // chỉ nạp atlas của chủ đề màu khu vực hiện tại
+    const t = AREA_THEME[AREA_ID];
+    this.load.atlas('th_' + t, `assets/${t}.png`, `assets/${t}.json`);
+  }
+
   makeTextures() {
     const g = this.make.graphics({ x: 0, y: 0, add: false });
     const tex = (key, w, h, fn) => { g.clear(); fn(g); g.generateTexture(key, w, h); };
@@ -54,6 +61,7 @@ class GameScene extends Phaser.Scene {
     tex('ice_king', 76, 76, g => { g.fillStyle(0x6fb6e8).fillRoundedRect(4, 8, 68, 60, 14); g.fillStyle(0xffffff).fillRect(46, 24, 9, 9); g.fillTriangle(10, 8, 20, 0, 30, 8).fillTriangle(46, 8, 56, 0, 66, 8); });
     tex('shade', 28, 28, g => { g.fillStyle(0x4a2a6a).fillCircle(14, 14, 11); g.fillStyle(0xff4aff).fillRect(9, 10, 4, 4).fillRect(16, 10, 4, 4); });
     tex('ma_vuong', 88, 88, g => { g.fillStyle(0x2a0f3a).fillRoundedRect(6, 10, 76, 70, 20); g.fillStyle(0xff4040).fillRect(30, 30, 10, 10).fillRect(50, 30, 10, 10); g.fillStyle(0x8a3fd0).fillTriangle(10, 10, 22, 0, 34, 10).fillTriangle(54, 10, 66, 0, 78, 10); });
+    tex('px', 2, 2, g => { g.fillStyle(0xffffff).fillRect(0, 0, 2, 2); }); // khối va chạm vô hình
     g.destroy();
     buildSprites(this, CFG.classId); // thay hình khối tạm bằng pixel art (cùng tên texture)
   }
@@ -62,7 +70,6 @@ class GameScene extends Phaser.Scene {
     this.makeTextures();
     const { w: W, h: H } = CFG.world;
     this.physics.world.setBounds(0, 0, W, H);
-    this.add.tileSprite(0, 0, W, H, AREA.tile).setOrigin(0);
 
     // Điểm hồi sinh
     CHECKPOINTS.forEach(c => this.add.image(c.x, c.y, 'cp').setDepth(1));
@@ -72,16 +79,8 @@ class GameScene extends Phaser.Scene {
       this.add.text(p.x, p.y + 34, AREAS[p.to].name, { fontFamily: 'monospace', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(2);
     });
 
-    // Cây (vật cản) – sinh theo số giả ngẫu nhiên cố định
-    this.trees = this.physics.add.staticGroup();
-    let seed = 7;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const keepClear = [...CHECKPOINTS, ...SPAWNS, AREA.portal, ...(AREA.portal2 ? [AREA.portal2] : []), ...(AREA.extra || [])];
-    for (let i = 0; i < 70; i++) {
-      const x = 40 + rnd() * (W - 80), y = 40 + rnd() * (H - 80);
-      if (keepClear.some(c => Math.hypot(c.x - x, c.y - y) < 130)) continue;
-      this.trees.create(x, y, AREA.obst).setDepth(3).refreshBody();
-    }
+    // Bản đồ: nền gạch 48px, đường mòn, ao hồ, cây/đá/cảnh vật theo chủ đề màu của khu vực
+    this.trees = buildMap(this, AREA_ID, AREA, W, H);
 
     // Người chơi
     const c = CLASSES[CFG.classId];
@@ -133,13 +132,13 @@ class GameScene extends Phaser.Scene {
     });
 
     // UI
-    this.gfx = this.add.graphics().setDepth(20);
-    this.hud = this.add.graphics().setScrollFactor(0).setDepth(100);
+    this.gfx = this.add.graphics().setDepth(5000);
+    this.hud = this.add.graphics().setScrollFactor(0).setDepth(10000);
     const ts = { fontFamily: 'monospace', fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3 };
-    this.info = this.add.text(16, 62, '', ts).setScrollFactor(0).setDepth(100);
+    this.info = this.add.text(16, 62, '', ts).setScrollFactor(0).setDepth(10000);
     this.help = this.add.text(16, 0, 'WASD: đi | J/Click quái: đánh | 1: Kỹ năng | Space: né | Tab: khóa | Q: Auto | I: túi đồ | E/P: nhặt đồ',
-      { ...ts, fontSize: '12px' }).setScrollFactor(0).setDepth(100);
-    this.msgText = this.add.text(0, 90, '', { ...ts, fontSize: '20px' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100).setAlpha(0);
+      { ...ts, fontSize: '12px' }).setScrollFactor(0).setDepth(10000);
+    this.msgText = this.add.text(0, 90, '', { ...ts, fontSize: '20px' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10000).setAlpha(0);
     this.scale.on('resize', () => this.layout());
     this.layout();
   }
@@ -158,7 +157,7 @@ class GameScene extends Phaser.Scene {
 
   popup(x, y, text, color = '#fff') {
     if (G.set.lowfx && color === '#ffffff') return; // giảm hiệu ứng: bỏ số sát thương thường
-    const t = this.add.text(x, y, String(text), { fontFamily: 'monospace', fontSize: '16px', color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(30);
+    const t = this.add.text(x, y, String(text), { fontFamily: 'monospace', fontSize: '16px', color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(5000);
     this.tweens.add({ targets: t, y: y - 34, alpha: 0, duration: 700, onComplete: () => t.destroy() });
   }
 
@@ -221,6 +220,7 @@ class GameScene extends Phaser.Scene {
 
   updateEnemy(e, dt) {
     if (!e.active || e.dead) return;
+    e.setDepth(10 + e.y); // đứng sau/trước cây theo vị trí y
     const d = e.d, P = this.p, alive = !this.playerDead;
     const dp = dist(e, P), dh = dist(e, e.home);
     e.cd = Math.max(0, e.cd - dt);
@@ -387,6 +387,7 @@ class GameScene extends Phaser.Scene {
     if (!this.pet) return;
     const k = Math.min(1, dt * 5);
     this.pet.x += (this.p.x - 26 - this.pet.x) * k; this.pet.y += (this.p.y + 10 - this.pet.y) * k;
+    this.pet.setDepth(10 + this.pet.y);
     if (PETS[G.pet].shoot && !this.playerDead && (this.petT = (this.petT || 0) - dt) <= 0) {
       const t = this.nearestEnemy(300);
       if (t) { this.fire('bolt', 0.6, 420, false, t, this.pet); this.petT = 2; }
@@ -461,7 +462,7 @@ class GameScene extends Phaser.Scene {
 
   meleeHit(mult, radius) {
     const p = this.p;
-    const c = this.add.circle(p.x, p.y, radius, 0xffffff, G.set.lowfx ? 0 : 0.25).setDepth(7);
+    const c = this.add.circle(p.x, p.y, radius, 0xffffff, G.set.lowfx ? 0 : 0.25).setDepth(4000);
     this.tweens.add({ targets: c, alpha: 0, duration: 150, onComplete: () => c.destroy() });
     this.enemies.getChildren().forEach(e => { if (e.active && !e.dead && dist(p, e) <= radius + 14) this.hitEnemy(e, mult); });
   }
@@ -494,7 +495,7 @@ class GameScene extends Phaser.Scene {
 
   fire(tex, mult, speed, pierce, tgt, src = this.p) {
     const dir = tgt ? new Phaser.Math.Vector2(tgt.x - src.x, tgt.y - src.y).normalize() : this.face.clone();
-    const pr = this.projs.create(src.x, src.y, tex).setDepth(6);
+    const pr = this.projs.create(src.x, src.y, tex).setDepth(4000);
     pr.body.setAllowGravity(false);
     pr.setVelocity(dir.x * speed, dir.y * speed);
     Object.assign(pr, { mult, pierce, hit: new Set(), life: 1.3 });
@@ -586,6 +587,7 @@ class GameScene extends Phaser.Scene {
     s.slowT = (s.slowT || 0) - dt; s.freezeT = (s.freezeT || 0) - dt;
     this.gfx.clear();
     if (!this.playerDead) this.updatePlayer(dt); else this.p.setVelocity(0, 0);
+    this.p.setDepth(10 + this.p.y);
     this.p.setAlpha(this.playerDead ? 0.4 : (s.iframes > 0 ? 0.6 : 1));
     const chill = s.freezeT > 0 || s.slowT > 0;
     if (chill !== this.chilled) { this.chilled = chill; if (chill) this.p.setTint(0x9fd8ff); else this.p.clearTint(); }
