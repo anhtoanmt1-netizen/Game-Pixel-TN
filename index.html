@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>ETERNAL PIXEL – Prototype</title>
+<title>ETERNAL PIXEL</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1b1f2e">
 <style>
   html,body{margin:0;height:100%;background:#0b0d14;overflow:hidden;touch-action:none;user-select:none}
   #game{position:fixed;inset:0}
@@ -23,11 +25,12 @@
 <div id="touch">
   <div id="stick"><div id="knob"></div></div>
   <button class="btn" id="bAtk">Đánh</button>
-  <button class="btn" id="bSkill">Lửa</button>
+  <button class="btn" id="bSkill">Skill</button>
   <button class="btn" id="bDodge">Né</button>
   <button class="btn" id="bAuto">Auto</button>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script type="module" src="src/main.js"></script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");</script>
 </body>
 </html>
