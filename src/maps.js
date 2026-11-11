@@ -31,6 +31,7 @@ function rng(str) {
 
 export function generateLayout(areaId, AREA, W, H) {
   const theme = AREA_THEME[areaId], T = THEMES[theme], st = STYLE[theme], dens = DENSITY[areaId] ?? 1;
+  const CNT = (W * H) / (1824 * 1200) * 0.8; // bản đồ lớn hơn → nhiều vật thể hơn
   const rnd = rng(areaId), pick = a => a[Math.floor(rnd() * a.length)];
   const cols = Math.ceil(W / CELL), rows = Math.ceil(H / CELL);
   const portals = [AREA.portal, AREA.portal2, ...(AREA.extra || [])].filter(Boolean);
@@ -39,7 +40,7 @@ export function generateLayout(areaId, AREA, W, H) {
     ...portals.map(p => ({ x: p.x, y: p.y, r: 80 })),
     ...AREA.spawns.map(s => ({ x: s.x, y: s.y, r: MONSTERS[s.id].boss ? 150 : 60, boss: !!MONSTERS[s.id].boss })),
   ];
-  if (AREA.mode) keep.push({ x: 900, y: 520, r: 300 }); // chế độ đấu trường: giữ khoảng trống ở giữa
+  if (AREA.mode) keep.push({ x: W / 2, y: H * 0.43, r: 420 }); // chế độ đấu trường: giữ khoảng trống ở giữa
 
   // 1) Đường mòn nối checkpoint, cổng và một số điểm quái (Prim, hơi uốn lượn)
   const path = new Uint8Array(cols * rows);
@@ -88,7 +89,7 @@ export function generateLayout(areaId, AREA, W, H) {
     if (COLL[cat]) { const c = COLL[cat]({ w: s[1], h: s[2] }); blocks.push({ x, y: y + c.dy, w: c.w, h: c.h }); }
   };
   blocks.push({ x: W / 2, y: 28, w: W, h: 56 }, { x: 9, y: H / 2, w: 18, h: H }, { x: W - 9, y: H / 2, w: 18, h: H }, { x: W / 2, y: H - 8, w: W, h: 16 }); // viền bản đồ
-  for (let k = 0, n = Math.round((st.pool || 0) * Math.min(1, dens * 1.5)); k < n; k++) { // ao / dung nham / băng
+  for (let k = 0, n = Math.round((st.pool || 0) * Math.min(1, dens * 1.5) * 2); k < n; k++) { // ao / dung nham / băng
     for (let t = 0; t < 80; t++) {
       const s = pick(T.pool), x = 140 + rnd() * (W - 280), y = 160 + rnd() * (H - 300);
       if (nearKeep(x, y, s[1] / 2 + 40) || onPath(x, y, 2) || placed.some(p => Math.hypot(p.x - x, p.y - y) < MIN.pool)) continue;
@@ -103,7 +104,7 @@ export function generateLayout(areaId, AREA, W, H) {
 
   const scatter = (cat, n) => {
     const list = T[cat]; if (!list || !list.length) return;
-    let count = Math.round(n * dens), tries = count * 40;
+    let count = Math.round(n * dens * CNT), tries = count * 40;
     while (count > 0 && tries-- > 0) {
       const s = pick(list), x = 36 + rnd() * (W - 72), y = 90 + rnd() * (H - 130), hard = !!COLL[cat];
       if (nearKeep(x, y, hard ? 34 : 14) || onPath(x, y, hard ? 1 : 0)) continue;
@@ -126,5 +127,5 @@ export function buildMap(scene, areaId, AREA, W, H) {
   });
   const group = scene.physics.add.staticGroup();
   L.blocks.forEach(b => group.create(b.x, b.y, 'px').setVisible(false).setDisplaySize(b.w, b.h).refreshBody());
-  return group;
+  return { group, layout: L };
 }

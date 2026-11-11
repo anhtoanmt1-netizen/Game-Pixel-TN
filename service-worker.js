@@ -1,7 +1,8 @@
-// Cache-first, cập nhật nền. Đổi V mỗi khi phát hành để xóa cache cũ.
-const V = 'eternal-pixel-v13';
+// Cache-first, cập nhật nền (cũng lưu font Montserrat sau lần tải đầu để chơi offline). Đổi V mỗi lần phát hành.
+const V = 'eternal-pixel-v14';
 const CORE = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
-  'src/main.js', 'src/data.js', 'src/items.js', 'src/ui.js', 'src/save.js', 'src/combat.js', 'src/touch.js', 'src/audio.js', 'src/sprites.js', 'src/maps.js', 'src/themes.js',
+  ...['main', 'data', 'items', 'board', 'hud', 'inv', 'layout', 'save', 'combat', 'touch', 'audio', 'sprites', 'maps', 'themes'].map(n => `src/${n}.js`),
+  ...['board.jpg', 'icons.png', 'plate_big.png', 'plate_small.png', 'hud_icons.png'].map(n => `assets/ui/${n}`),
   ...['forest', 'cave', 'volcano', 'ice', 'dark'].flatMap(t => [`assets/${t}.png`, `assets/${t}.json`]),
   'https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js'];
 self.addEventListener('install', e => e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting())));

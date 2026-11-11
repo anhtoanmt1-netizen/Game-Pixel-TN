@@ -170,9 +170,14 @@ AREAS.rift = { name: 'Khe Nứt Tinh Anh', mode: 'rift', tile: 'void', obst: 'vo
 AREAS.daily = { name: 'Phụ Bản Hàng Ngày', mode: 'daily', tile: 'ice', obst: 'iceobs', need: 'q2', checkpoints: mid, spawns: [], portal: back };
 
 // ---- Bản đồ lớn hơn một chút (khớp lưới ô 48px), quái thường nhân đôi, hồi sinh nhanh hơn
-CFG.world.w = 1824;
-for (const a of Object.values(AREAS)) { // nhân đôi quái thường ở mỗi bản đồ (boss giữ nguyên 1 con)
-  const extra = a.spawns.filter(s => !MONSTERS[s.id].boss).map(s => ({ id: s.id, x: Math.min(CFG.world.w - 80, s.x + 90), y: Math.min(CFG.world.h - 80, s.y + 70) }));
-  a.spawns = [...a.spawns, ...extra];
+CFG.world.w = 3072; CFG.world.h = 2016; // bản đồ rộng hơn (64×42 ô 48px)
+const KS = 1.68, seen = new Set(); // nhân tọa độ; bỏ qua đối tượng dùng chung giữa các khu vực
+const sc = o => { if (!o || seen.has(o)) return; seen.add(o); o.x = Math.round(o.x * KS); o.y = Math.round(o.y * KS); };
+for (const a of Object.values(AREAS)) {
+  a.checkpoints.forEach(sc); a.spawns.forEach(sc); [a.portal, a.portal2, ...(a.extra || [])].forEach(sc);
+  const base = a.spawns.filter(s => !MONSTERS[s.id].boss), cl = v => Math.max(160, Math.min(CFG.world.w - 160, v)), ch = v => Math.max(160, Math.min(CFG.world.h - 160, v));
+  const x2 = base.map(s => ({ id: s.id, x: cl(s.x + 150), y: ch(s.y + 110) }));                         // nhân đôi quái thường
+  const x3 = base.filter((s, i) => i % 2 === 0).map(s => ({ id: s.id, x: cl(s.x - 260), y: ch(s.y + 200) })); // thêm 50% cho vừa diện tích mới
+  a.spawns = [...a.spawns, ...x2, ...x3];
 }
 Object.values(MONSTERS).forEach(m => { m.respawn = Math.max(5, Math.round(m.respawn * 0.4)); }); // 20s → 8s, boss 60s → 24s

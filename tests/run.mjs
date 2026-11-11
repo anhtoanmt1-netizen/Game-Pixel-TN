@@ -176,11 +176,87 @@ test('mọi bản đồ: vật cản không đè điểm cần chừa; người 
   });
 });
 test('quái thường đã nhân đôi, boss giữ 1 con; hồi sinh nhanh hơn', () => {
-  assert.equal(AREAS.forest.spawns.filter(s => s.id === 'wolf').length, 10);
-  assert.equal(AREAS.cave.spawns.filter(s => s.id === 'spider').length, 12);
+  assert.ok(AREAS.forest.spawns.filter(s => s.id === 'wolf').length >= 10);
+  assert.ok(AREAS.cave.spawns.filter(s => s.id === 'spider').length >= 12);
   assert.equal(AREAS.volcano.spawns.filter(s => s.id === 'fire_dragon').length, 1);
   assert.equal(MONSTERS.wolf.respawn, 8); assert.equal(MONSTERS.wolf_king.respawn, 24);
 });
+
+console.log('Giao diện');
+import { LAYOUT } from '../src/layout.js';
+import * as INV from '../src/inv.js';
+import { SLOTS } from '../src/items.js';
+test('layout: đủ ô và nằm trong khung 16:9', () => {
+  assert.equal(LAYOUT.igrid.length, 42); assert.deepEqual(Object.keys(LAYOUT.eslots).sort(), [...SLOTS].sort());
+  assert.equal(LAYOUT.dslots.length, 16); assert.equal(LAYOUT.srows.length, 16); assert.equal(LAYOUT.tabs.length, 5); assert.equal(LAYOUT.itabs.length, 7);
+  assert.equal(LAYOUT.round.length, 7); assert.equal(LAYOUT.diamond.length, 7); assert.equal(LAYOUT.bags.length, 6);
+  const all = [...LAYOUT.igrid, ...Object.values(LAYOUT.eslots), ...LAYOUT.dslots, ...LAYOUT.srows, ...LAYOUT.tabs, ...LAYOUT.itabs, ...LAYOUT.round, ...LAYOUT.diamond, ...LAYOUT.bags, LAYOUT.track, LAYOUT.stage];
+  all.forEach(r => { assert.ok(r[0] >= 0 && r[1] >= 0 && r[0] + r[2] <= 100.01 && r[1] + r[3] <= 100.01, JSON.stringify(r)); });
+});
+test('icon trang bị: mọi loại x mọi độ hiếm x mọi lớp ra đúng ô trong sprite 6×12', () => {
+  for (const cls of Object.keys(CLASSES)) for (let ri = 0; ri < 7; ri++) for (const slot of ['weapon', 'helmet', 'armor', 'gloves', 'boots', 'necklace', 'ring', 'cloak', 'accessory']) {
+    const p = INV.iconPos({ slot, ri }, cls); assert.ok(p.row >= 0 && p.row <= 11 && p.col >= 0 && p.col <= 5, `${cls} ${slot} ${ri}`);
+  }
+  assert.equal(INV.iconKey({ slot: 'weapon' }, 'mage'), 'staff'); assert.equal(INV.iconKey({ slot: 'weapon' }, 'elf'), 'bow');
+  assert.equal(INV.iconKey({ slot: 'helmet' }, 'mage'), 'hat'); assert.equal(INV.iconKey({ slot: 'accessory' }, 'rogue'), 'book');
+  assert.equal(INV.iconPos({ slot: 'ring', ri: 6 }, 'mage').fire, true);
+});
+test('lọc / sắp xếp túi', () => {
+  const inv = [I.genItem(5, 0, 'weapon'), I.genItem(9, 3, 'ring'), I.genItem(7, 5, 'boots'), I.genItem(3, 3, 'weapon')]; inv[2].locked = true;
+  assert.equal(INV.filterInv(inv, { group: 'weapon' }).length, 2); assert.equal(INV.filterInv(inv, { group: 'locked' }).length, 1);
+  assert.equal(INV.filterInv(inv, { rarity: 3 }).length, 2); assert.equal(INV.filterInv(inv, { group: 'armor' }).length, 1);
+  INV.sortInv(inv, 'rarity'); assert.ok(inv.every((x, i) => !i || inv[i - 1].ri >= x.ri));
+  INV.sortInv(inv, 'level'); assert.ok(inv.every((x, i) => !i || inv[i - 1].lv >= x.lv));
+});
+test('bán / phân giải nhanh không bao giờ động tới đồ khóa và đúng tổng', () => {
+  const G = newG(); G.inv = [I.genItem(5, 0, 'weapon'), I.genItem(5, 1, 'ring'), I.genItem(5, 2, 'boots'), I.genItem(5, 1, 'ring')]; G.inv[1].locked = true;
+  const l = INV.quickList(G.inv, { maxRi: 1 }); assert.equal(l.length, 2); assert.ok(l.every(x => !x.locked && x.ri <= 1));
+  const t = INV.quickTotals(l); assert.equal(t.gold, l.reduce((a, x) => a + INV.sellValue(x), 0));
+  INV.applyRemove(G, l); assert.equal(G.inv.length, 2); assert.ok(G.inv.some(x => x.locked));
+  assert.equal(INV.quickList(G.inv, { maxRi: 5, kinds: new Set(['boots']) }).length, 1);
+});
+test('kéo-thả: mặc đúng ô, từ chối sai ô, hoán đổi, không mất đồ', () => {
+  const G = newG(), w = I.genItem(5, 2, 'weapon'), r1 = I.genItem(5, 2, 'ring'), r2 = I.genItem(5, 2, 'ring'), h = I.genItem(5, 2, 'helmet');
+  G.inv = [w, r1, r2, h];
+  assert.equal(INV.equipTo(G, w, 'helmet'), false); assert.equal(G.inv.length, 4);            // sai ô
+  assert.equal(INV.equipTo(G, w, 'weapon'), true); assert.equal(INV.equipTo(G, r1, 'ring2'), true); assert.equal(G.eq.ring2.id, r1.id);
+  assert.equal(INV.equipTo(G, r2, 'ring2'), true); assert.ok(G.inv.some(x => x.id === r1.id)); // hoán đổi về túi
+  assert.equal(INV.moveEq(G, 'ring2', 'ring1'), true); assert.equal(G.eq.ring1.id, r2.id);     // đổi nhẫn trái/phải
+  assert.equal(INV.moveEq(G, 'weapon', 'helmet'), false);
+  assert.equal(G.inv.length + Object.keys(G.eq).length, 4);
+});
+try { // kiểm thử khói cho bảng giao diện với DOM giả (không có trình duyệt thật)
+  const created = [];
+  const mk = () => { const o = { style: { setProperty() {} }, dataset: {}, listeners: {}, _html: '', clientWidth: 1000,
+    classList: { s: new Set(), add(c) { this.s.add(c); }, remove(c) { this.s.delete(c); }, contains(c) { return this.s.has(c); }, toggle() {} },
+    appendChild() {}, remove() {}, addEventListener(t, f) { this.listeners[t] = f; }, querySelector: () => null, querySelectorAll: () => [], getContext: () => ({}) };
+    Object.defineProperty(o, 'innerHTML', { get() { return this._html; }, set(v) { this._html = v; this._fc = null; } });
+    Object.defineProperty(o, 'firstChild', { get() { return this._fc || (this._fc = mk()); } }); created.push(o); return o; };
+  globalThis.document = { head: mk(), body: mk(), createElement: () => mk(), getElementById: () => null, elementFromPoint: () => null };
+  globalThis.window = { addEventListener() {}, confirm: () => true, prompt: () => '1' }; globalThis.alert = () => {}; globalThis.prompt = () => '1'; globalThis.confirm = () => true;
+  const { initBoard } = await import('../src/board.js');
+  const G = newG(); G.classId = 'mage'; G.level = 30; G.gold = 99999; G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }; G.st = { kills: 0, boss: 0 }; G.ach = {}; G.pet = null; G.mat = { stone: 500 }; G.area = 'forest';
+  for (let ri = 0; ri < 7; ri++) G.inv.push(I.genItem(20, ri), I.genItem(20, ri, 'weapon', 'dragon')); I.addCard(G, 'wolf'); I.addCard(G, 'sc_power'); G.q = { q1: { p: 5, done: true } };
+  let changed = 0, traveled = null;
+  const api = initBoard(G, { ps: () => ({ hp: 100, maxHp: 200 }), onChange: () => { changed++; }, msg() {}, travel: id => { traveled = id; }, toggleAuto() {} });
+  const root = created.find(e => e.id === 'ui'), board = root.firstChild;
+  api.open(); const html = () => board.innerHTML, click = d => board.listeners.click({ target: { closest: () => ({ dataset: { ...d } }) } });
+  const must = (s, why) => assert.ok(html().includes(s), why || s);
+  must('MẶC ĐỒ'); must('Tấn Công'); must('data-drop="eq:weapon"'); must('data-drop="eq:accessory"'); must('Sinh Lực');
+  assert.ok((html().match(/data-from="inv"/g) || []).length === 14, 'túi hiển thị đủ 14 món');
+  for (const [t, s] of [['skill', 'Kỹ năng bị động'], ['card', 'Bộ thẻ'], ['quest', 'Nhiệm vụ'], ['map', 'Dịch chuyển'], ['equip', 'Tấn Công']]) { click({ a: 'tab', t }); must(s, 'tab ' + t); }
+  for (const [m, s] of [['set', 'Tầm nhìn'], ['pets', 'Thú đồng hành'], ['craft', 'Chế tạo'], ['ach', 'Thành tựu'], ['filter', 'Lọc'], ['quick', 'Bán nhanh']]) { click({ a: m === 'quick' ? 'quick' : 'modal', m, mode: 'sell' }); must(s, 'modal ' + m); click({ a: 'closemodal' }); }
+  const id0 = G.inv[0].id; click({ a: 'sel', id: id0 }); must('Cường hóa'); must('Phân giải');
+  click({ a: 'lock', id: id0 }); assert.equal(G.inv[0].locked, true); click({ a: 'lock', id: id0 });
+  const w = G.inv.find(x => x.slot === 'weapon'); click({ a: 'equip', id: w.id }); assert.equal(G.eq.weapon.id, w.id);
+  const gold0 = G.gold, victim = G.inv.find(x => x.ri === 0); click({ a: 'sell', id: victim.id }); assert.ok(G.gold > gold0 && !G.inv.includes(victim));
+  const n0 = G.inv.length, lockedBefore = G.inv.filter(x => x.locked).length; G.inv[0].locked = true;
+  click({ a: 'quick', mode: 'sell' }); click({ a: 'qri', v: '5' }); click({ a: 'qgo' }); assert.ok(G.inv.length < n0 && G.inv.some(x => x.locked), 'bán nhanh giữ đồ khóa');
+  click({ a: 'grp', g: 'weapon' }); assert.ok(html().includes('data-from="inv"')); click({ a: 'clearf' });
+  click({ a: 'sk', k: 'power' }); assert.equal(G.sk.power, 1);
+  click({ a: 'travel', id: 'cave' }); assert.equal(traveled, 'cave');
+  assert.ok(changed > 5); pass++; console.log('  ok  bảng giao diện (DOM giả): mọi tab, hộp thoại và thao tác chính chạy đúng');
+} catch (e) { fail++; console.log('FAIL  bảng giao diện (DOM giả)\n      ' + (e.stack || e.message).split('\n').slice(0, 4).join('\n      ')); }
 
 console.log(`\n${pass} đạt, ${fail} lỗi`);
 process.exit(fail ? 1 : 0);

@@ -3,16 +3,17 @@ import { calcDamage, rollCrit, rollDodge } from './combat.js';
 import { TOUCH } from './touch.js';
 import { lookStage, PETS, ACHS, RARITY, CARDS, derive, expNeed, genItem, rollRarity, addCard } from './items.js';
 import { save, load } from './save.js';
-import { initUI, pickClass } from './ui.js';
+import { initBoard, pickClass } from './board.js';
+import { initHud } from './hud.js';
 import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
 import { buildMap, AREA_THEME } from './maps.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
-const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false }, pet: null, look: null, petLv: {} }, await load() || {});
+const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }, pet: null, look: null, petLv: {} }, await load() || {});
 if (!G.classId) { G.classId = await pickClass(CLASSES); await save(G); }
 CFG.classId = G.classId;
-G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, ...G.set };
+G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true, ...G.set };
 const AREA = AREAS[G.area] || AREAS.forest;
 const AREA_ID = AREAS[G.area] ? G.area : 'forest';
 const CHECKPOINTS = AREA.checkpoints, SPAWNS = AREA.spawns;
@@ -76,11 +77,12 @@ class GameScene extends Phaser.Scene {
     this.portals = [AREA.portal, AREA.portal2, ...(AREA.extra || [])].filter(Boolean); this.portalT = 0;
     this.portals.forEach(p => {
       this.add.image(p.x, p.y, 'portal').setDepth(1);
-      this.add.text(p.x, p.y + 34, AREAS[p.to].name, { fontFamily: 'monospace', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(2);
+      this.add.text(p.x, p.y + 34, AREAS[p.to].name, { fontFamily: 'Montserrat, sans-serif', fontStyle: 'bold', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(2);
     });
 
     // Bản đồ: nền gạch 48px, đường mòn, ao hồ, cây/đá/cảnh vật theo chủ đề màu của khu vực
-    this.trees = buildMap(this, AREA_ID, AREA, W, H);
+    const built = buildMap(this, AREA_ID, AREA, W, H);
+    this.trees = built.group;
 
     // Người chơi
     const c = CLASSES[CFG.classId];
@@ -95,7 +97,11 @@ class GameScene extends Phaser.Scene {
     this.drops = [];
     this.autoAll = true; // Nhặt đồ: P đổi giữa tự động hết / E cho đồ hiếm
     this.applyStats(true);
-    this.ui = initUI(G, { onChange: () => { this.applyStats(); this.syncPet(); this.persist(); } });
+    this.board = initBoard(G, {
+      ps: () => this.ps, msg: t => this.msg(t), toggleAuto: () => this.toggleAuto(), travel: id => this.travelTo(id),
+      onChange: () => { this.applyStats(); this.syncPet(); this.applyZoom(); this.persist(); },
+      onOpen: () => this.scene.pause(), onClose: () => this.scene.resume(),
+    });
     initAudio(() => G.set, G.area);
     this.syncPet();
     window.addEventListener('beforeunload', () => this.persist());
@@ -118,10 +124,10 @@ class GameScene extends Phaser.Scene {
 
     // Camera: theo nhân vật, giới hạn trong bản đồ
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, W, H).startFollow(this.p, true, 0.1, 0.1).setZoom(1.5);
+    cam.setBounds(0, 0, W, H).startFollow(this.p, true, 0.1, 0.1);
 
     // Điều khiển
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,J,Q,E,P,TAB,ONE,SPACE');
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,J,Q,E,P,Z,M,TAB,ONE,SPACE');
     this.cursors = this.input.keyboard.createCursorKeys();
     this.input.on('pointerdown', ptr => {
       if (ptr.event && ptr.event.target && ptr.event.target.closest && ptr.event.target.closest('#touch')) return;
@@ -131,33 +137,27 @@ class GameScene extends Phaser.Scene {
       this.target = hit || null; // click quái = khóa mục tiêu; click đất = bỏ khóa
     });
 
-    // UI
+    // HUD là DOM trong khung 16:9 (hud.js); ở đây chỉ còn lớp đồ họa nằm trong thế giới
     this.gfx = this.add.graphics().setDepth(5000);
-    this.hud = this.add.graphics().setScrollFactor(0).setDepth(10000);
-    const ts = { fontFamily: 'monospace', fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3 };
-    this.info = this.add.text(16, 62, '', ts).setScrollFactor(0).setDepth(10000);
-    this.help = this.add.text(16, 0, 'WASD: đi | J/Click quái: đánh | 1: Kỹ năng | Space: né | Tab: khóa | Q: Auto | I: túi đồ | E/P: nhặt đồ',
-      { ...ts, fontSize: '12px' }).setScrollFactor(0).setDepth(10000);
-    this.msgText = this.add.text(0, 90, '', { ...ts, fontSize: '20px' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10000).setAlpha(0);
-    this.scale.on('resize', () => this.layout());
-    this.layout();
+    this.hudApi = initHud(document.getElementById('stage'), { bag: () => this.board.toggle(), zoom: () => this.cycleZoom(), auto: () => this.toggleAuto(), set: () => this.board.open('equip', 'set') });
+    this.hudApi.setMap({ W, H, theme: AREA_THEME[AREA_ID], blocks: built.layout.blocks, portals: this.portals, checkpoints: CHECKPOINTS });
+    this.applyZoom();
+    if (this.pendingMsg) this.hudApi.msg(this.pendingMsg);
   }
 
-  layout() {
-    const { width, height } = this.scale;
-    this.msgText.setX(width / 2);
-    this.help.setY(height - 22);
+  applyZoom() { this.cameras.main.setZoom({ near: 1.5, wide: 1.0, ultra: 0.7 }[G.set.zoom] || 1.5); } // gần / rộng / siêu rộng
+  cycleZoom() {
+    G.set.zoom = { near: 'wide', wide: 'ultra', ultra: 'near' }[G.set.zoom || 'near'];
+    this.msg('Tầm nhìn: ' + { near: 'Gần', wide: 'Rộng', ultra: 'Siêu rộng' }[G.set.zoom]); this.applyZoom(); this.persist();
   }
+  toggleAuto() { this.auto = !this.auto; this.msg(this.auto ? 'Auto Battle: BẬT' : 'Auto Battle: TẮT'); }
+  travelTo(id) { if (this.traveling) return; this.traveling = true; G.area = id; this.msg('Đang dịch chuyển...'); save(G).then(() => location.reload()); }
 
-  msg(t) {
-    this.msgText.setText(t).setAlpha(1);
-    this.tweens.killTweensOf(this.msgText);
-    this.tweens.add({ targets: this.msgText, alpha: 0, delay: 1800, duration: 500 });
-  }
+  msg(t) { if (this.hudApi) this.hudApi.msg(t); else this.pendingMsg = t; }
 
   popup(x, y, text, color = '#fff') {
     if (G.set.lowfx && color === '#ffffff') return; // giảm hiệu ứng: bỏ số sát thương thường
-    const t = this.add.text(x, y, String(text), { fontFamily: 'monospace', fontSize: '16px', color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(5000);
+    const t = this.add.text(x, y, String(text), { fontFamily: 'Montserrat, sans-serif', fontStyle: 'bold', fontSize: '16px', color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(5000);
     this.tweens.add({ targets: t, y: y - 34, alpha: 0, duration: 700, onComplete: () => t.destroy() });
   }
 
@@ -202,7 +202,7 @@ class GameScene extends Phaser.Scene {
       if (d.card) { addCard(G, d.card); this.msg(`Nhận thẻ: ${CARDS[d.card].name}`); }
       else if (G.inv.length >= G.cap) { this.msg('Túi đồ đã đầy!'); return true; }
       else { G.inv.push(d.item); this.msg(`Nhặt: ${d.item.name}`); }
-      d.destroy(); sfx('pick'); this.ui.refresh(); this.persist();
+      d.destroy(); sfx('pick'); this.board.refresh(); this.persist();
       return false;
     });
   }
@@ -415,10 +415,10 @@ class GameScene extends Phaser.Scene {
     if (m === 'rift') { sc = 2 + 0.3 * (f - 1); elite = true; } // quái tinh anh, độ khó cao
     if (m === 'daily') { tier = Math.min(4, Math.floor(G.level / 20)); sc = 1 + 0.15 * (f - 1); boss = f === 5; n = boss ? 3 : 3 + f; }
     for (let i = 0; i < n; i++) {
-      const e = this.spawn(mobs[tier], Phaser.Math.Between(400, 1500), Phaser.Math.Between(200, 800), true, sc);
+      const e = this.spawn(mobs[tier], Phaser.Math.Between(CFG.world.w * 0.2, CFG.world.w * 0.82), Phaser.Math.Between(CFG.world.h * 0.15, CFG.world.h * 0.7), true, sc);
       if (elite) e.setTint(0xffb0b0);
     }
-    if (boss) this.spawn(bosses[tier], 900, 300, true, sc);
+    if (boss) this.spawn(bosses[tier], CFG.world.w / 2, CFG.world.h * 0.25, true, sc);
     this.msg(`Tầng ${f}${boss ? ' – BOSS' : ''}${elite ? ' (Tinh anh)' : ''}`);
   }
 
@@ -554,6 +554,19 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  updateHud() {
+    const s = this.ps, sk = SKILLS[s.skill], v = this.cameras.main.worldView;
+    const boss = this.enemies.getChildren().find(e => e.active && !e.dead && e.d.boss && e.state !== 'idle');
+    this.hudApi.update({
+      lv: G.level, hp: s.hp, maxHp: s.maxHp, xpPct: Math.min(100, G.exp / expNeed(G.level) * 100),
+      info: `${AREA.name}\nVàng ${G.gold.toLocaleString('vi-VN')} · Túi ${G.inv.length}/${G.cap}\n${this.questText()}`,
+      boss: boss ? { name: boss.d.name, hp: boss.hp, max: boss.d.hp } : null,
+      cdSkill: Math.max(0, s.skillCd) / (sk.cooldown * (1 - s.cdr / 100)), cdDodge: Math.max(0, s.dodgeCd) / 1.2, auto: this.auto, showMini: G.set.minimap,
+      enemies: this.enemies.getChildren().filter(e => e.active && !e.dead).map(e => ({ x: e.x, y: e.y, boss: !!e.d.boss })),
+      drops: this.drops, px: this.p.x, py: this.p.y, view: { x: v.x, y: v.y, w: v.width, h: v.height },
+    });
+  }
+
   drawBars() {
     // Thanh máu quái trong thế giới
     this.enemies.getChildren().forEach(e => {
@@ -565,24 +578,13 @@ class GameScene extends Phaser.Scene {
     // Khung chọn mục tiêu
     if (this.target && this.target.active) this.gfx.lineStyle(2, 0xffd34d).strokeCircle(this.target.x, this.target.y, 22);
 
-    // HUD cố định
-    const s = this.ps, h = this.hud;
-    h.clear();
-    h.fillStyle(0x000000, 0.6).fillRect(14, 14, 224, 22);
-    h.fillStyle(0x3ecf6a).fillRect(16, 16, 220 * (s.hp / s.maxHp), 18);
-    h.fillStyle(0x000000, 0.6).fillRect(14, 40, 224, 10);
-    h.fillStyle(0xff7a1a).fillRect(16, 42, 220 * (1 - Math.max(0, s.skillCd) / SKILLS[s.skill].cooldown), 6);
-    const boss = this.enemies.getChildren().find(e => e.active && !e.dead && e.d.boss && e.state !== 'idle');
-    if (boss) {
-      const bw = Math.min(420, this.scale.width - 40), bx = (this.scale.width - bw) / 2;
-      h.fillStyle(0x000000, 0.7).fillRect(bx - 2, 14, bw + 4, 16);
-      h.fillStyle(0xc0392b).fillRect(bx, 16, bw * Math.max(0, boss.hp / boss.d.hp), 12);
-    }
-    this.info.setText(`${AREA.name} · Lv.${G.level}  HP ${Math.ceil(s.hp)}/${s.maxHp}\nEXP ${G.exp}/${expNeed(G.level)}  Vàng ${G.gold}  Túi ${G.inv.length}/${G.cap}${this.auto ? '  [AUTO]' : ''}\n${this.questText()}`);
+    this.updateHud();
   }
 
   update(time, delta) {
     const dt = Math.min(delta / 1000, 0.05), s = this.ps;
+    if (Phaser.Input.Keyboard.JustDown(this.keys.Z)) this.cycleZoom();
+    if (Phaser.Input.Keyboard.JustDown(this.keys.M)) { G.set.minimap = !G.set.minimap; this.persist(); }
     s.atkCd -= dt; s.skillCd -= dt; s.dodgeCd -= dt; s.iframes -= dt; s.dashT -= dt;
     s.slowT = (s.slowT || 0) - dt; s.freezeT = (s.freezeT || 0) - dt;
     this.gfx.clear();
@@ -632,12 +634,13 @@ class GameScene extends Phaser.Scene {
   }
 }
 
+await Promise.race([document.fonts.load('700 14px Montserrat'), new Promise(r => setTimeout(r, 2500))]).catch(() => {}); // font Montserrat cho chữ trong game
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   backgroundColor: '#0b0d14',
   pixelArt: true,
-  scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 1280, height: 720 }, // luôn 16:9, vừa mọi màn hình
   physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
   scene: GameScene,
 });

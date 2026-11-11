@@ -2,33 +2,46 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>ETERNAL PIXEL</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1b1f2e">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  html,body{margin:0;height:100%;background:#0b0d14;overflow:hidden;touch-action:none;user-select:none}
-  #game{position:fixed;inset:0}
-  #touch{display:none}
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Montserrat',sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+  /* Khung chơi luôn 16:9, vừa khít màn hình (có viền đen nếu tỉ lệ khác) nên không có nội dung bị cắt hay che */
+  #stage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,calc(var(--vh,1vh)*177.7778));height:min(56.25vw,calc(var(--vh,1vh)*100));background:#0b0d14;overflow:hidden}
+  #game{position:absolute;inset:0}#game canvas{display:block}
+  #touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:30}
   @media (pointer:coarse){#touch{display:block}}
-  #stick{position:fixed;left:24px;bottom:24px;width:130px;height:130px;border-radius:50%;background:#ffffff22;border:2px solid #ffffff44}
-  #knob{position:absolute;left:45px;top:45px;width:40px;height:40px;border-radius:50%;background:#ffffff88}
-  .btn{position:fixed;width:64px;height:64px;border-radius:50%;border:2px solid #ffffff66;background:#ffffff22;color:#fff;font:600 13px sans-serif}
-  #bAtk{right:28px;bottom:36px;width:84px;height:84px}
-  #bSkill{right:124px;bottom:36px}
-  #bDodge{right:28px;bottom:136px}
-  #bAuto{right:104px;bottom:112px;width:56px;height:56px}
+  #touch>*{pointer-events:auto}
+  #stick{position:absolute;left:3.5%;bottom:7%;width:calc(var(--u,10)*13px);height:calc(var(--u,10)*13px);border-radius:50%;background:#ffffff22;border:2px solid #ffffff44}
+  #knob{position:absolute;left:33%;top:33%;width:34%;height:34%;border-radius:50%;background:#ffffff88}
+  .btn{position:absolute;width:calc(var(--u,10)*6.4px);height:calc(var(--u,10)*6.4px);border-radius:50%;border:2px solid #ffffff66;background:#ffffff22;color:#fff;font:700 calc(var(--u,10)*1.2px) Montserrat,sans-serif;padding:0}
+  #bAtk{right:3%;bottom:7%;width:calc(var(--u,10)*8.4px);height:calc(var(--u,10)*8.4px)}
+  #bSkill{right:14%;bottom:7%}#bDodge{right:3%;bottom:30%}#bAuto{right:12%;bottom:27%;width:calc(var(--u,10)*5px);height:calc(var(--u,10)*5px)}
 </style>
 </head>
 <body>
-<div id="game"></div>
-<div id="touch">
-  <div id="stick"><div id="knob"></div></div>
-  <button class="btn" id="bAtk">Đánh</button>
-  <button class="btn" id="bSkill">Skill</button>
-  <button class="btn" id="bDodge">Né</button>
-  <button class="btn" id="bAuto">Auto</button>
+<div id="stage">
+  <div id="game"></div>
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <button class="btn" id="bAtk">Đánh</button>
+    <button class="btn" id="bSkill">Skill</button>
+    <button class="btn" id="bDodge">Né</button>
+    <button class="btn" id="bAuto">Auto</button>
+  </div>
 </div>
+<script>
+  // đơn vị --u = 1% chiều rộng khung 16:9; --vh xử lý thanh địa chỉ trên điện thoại
+  (function () {
+    var st = document.getElementById('stage');
+    function fit() { document.documentElement.style.setProperty('--vh', window.innerHeight / 100 + 'px'); st.style.setProperty('--u', st.clientWidth / 100); }
+    window.addEventListener('resize', fit); window.addEventListener('orientationchange', fit); fit();
+  })();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script type="module" src="src/main.js"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");</script>
