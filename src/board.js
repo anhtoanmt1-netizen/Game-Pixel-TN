@@ -1,9 +1,8 @@
 // Bảng giao diện chính 16:9: ảnh nền do bạn cung cấp (đã xóa chữ/ô mẫu) + các lớp tương tác đặt theo % của ảnh.
 import { LAYOUT as L } from './layout.js';
-import { RARITY, SLOT_NAME, LABEL, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, awakenCost, rollAwaken, fmtAw, TRANS, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix, derive, expNeed, RESONANCE } from './items.js';
+import { RARITY, SLOT_NAME, LABEL, BONUS_LABEL, TYPE_VN, KIND_VN, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, awakenCost, rollAwaken, fmtAw, TRANS, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix, derive, expNeed, RESONANCE } from './items.js';
 import { CLASSES, CFG, AREAS, QUESTS, SKILLS, MONSTERS } from './data.js';
-import { MAPS, CLASS_PAL } from './sprites.js';
-import { iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
+import { itemName, iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
 import { exportJSON, importJSON } from './save.js';
 
 const TABS = [['equip', 'MẶC ĐỒ'], ['skill', 'KỸ NĂNG'], ['card', 'THẺ BÀI'], ['quest', 'NHIỆM VỤ'], ['map', 'BẢN ĐỒ']];
@@ -66,7 +65,7 @@ export function pickClass(classes) {
     const d = document.createElement('div');
     d.style.cssText = "position:absolute;inset:0;z-index:60;background:#0b0d14;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.2em;font-family:'Montserrat',sans-serif;font-size:calc(var(--u,10)*1.1px)";
     d.innerHTML = '<h2 style="margin:0;letter-spacing:.1em">Chọn lớp nhân vật</h2>' + Object.entries(classes).map(([k, c]) =>
-      `<button data-k="${k}" style="padding:.7em 1.4em;min-width:20em;background:#1b1f2e;color:#fff;border:1px solid #fff4;border-radius:.6em;font:600 1em Montserrat,sans-serif;cursor:pointer">${c.name} · HP ${c.hp} · DEF ${c.def} · ${c.melee ? 'Cận chiến' : 'Tầm xa'}</button>`).join('');
+      `<button data-k="${k}" style="display:flex;align-items:center;gap:1em;padding:.5em 1.2em .5em .6em;min-width:22em;background:#1b1f2e;color:#fff;border:1px solid #fff4;border-radius:.6em;font:600 1em Montserrat,sans-serif;cursor:pointer;text-align:left"><img src="assets/chars/${k}_portrait.png" alt="" style="height:5em"><span>${c.name}<br><small style="font-weight:500;opacity:.8">HP ${c.hp} · DEF ${c.def} · ${c.melee ? 'Cận chiến' : 'Tầm xa'}</small></span></button>`).join('');
     d.onclick = e => { const b = e.target.closest('button'); if (b) { d.remove(); res(b.dataset.k); } };
     (document.getElementById('stage') || document.body).appendChild(d);
   });
@@ -94,7 +93,7 @@ export function initBoard(G, hooks) {
 
   function equipView(d) {
     const s = ps(), c = cls(), stage = lookStage(G), pct = Math.min(100, G.exp / expNeed(G.level) * 100);
-    let h = `<div class="a c" style="${P(L.stage)}"><canvas id="pcv" width="12" height="12" style="width:100%;height:78%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 0 ${0.4 + stage * 0.5}em ${['#0000', '#6fb6ff', '#6ee7ff', '#ffd34d', '#ff4aff'][stage]})"></canvas></div>`;
+    let h = `<div class="a c" style="${P(L.stage)}"><img src="assets/chars/${G.classId || CFG.classId}_portrait.png" alt="" style="width:100%;height:92%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 0 ${0.4 + stage * 0.6}em ${['#0000', '#6fb6ff', '#6ee7ff', '#ffd34d', '#ff4aff'][stage]})"></div>`;
     h += `<div class="a c" style="${P(L.pname)};font-weight:800;color:#3a2412;font-size:calc(var(--u)*1.05px)">Nhà Thám Hiểm</div><div class="a c" style="${P(L.psub)};font-weight:700;color:#4d3317;font-size:calc(var(--u)*.78px)">Lv. ${G.level} · ${esc(c.name)} · ${LOOK_NAMES[stage]}</div>`;
     for (const slot of Object.keys(L.eslots)) { // 10 ô trang bị (thả vào để mặc)
       const it = G.eq[slot];
@@ -121,7 +120,7 @@ export function initBoard(G, hooks) {
     const rows = [['Sinh Lực', `${Math.ceil(s.hp)} / ${Math.round(d.maxHp)}`], ['Hút Máu', `${d.lifesteal}%`], ['Hồi Máu / Hạ Quái', `${d.heal_kill}%`],
       ['Tấn Công', fmtNum(d.matk)], ['Phòng Thủ', fmtNum(d.def)], ['Sát Thương Boss', `+${d.boss_dmg}%`], ['Né Tránh', `${d.dodge}%`], ['Chí Mạng', `${d.crit}%`], ['Sát Thương Chí Mạng', `${Math.round(d.critDmg * 100)}%`],
       ['Sát Thương Kỹ Năng', `+${d.skillDmg}%`], ['Tốc Độ Di Chuyển', d.speed],
-      ['Giảm Hồi Chiêu', `${d.cdr}%`], ['Thưởng EXP', `+${d.exp_bonus}%`], ['Thưởng Vàng', `+${d.gold_bonus}%`], ['Tầm Đánh', c.range], ['Hỏa Long (bộ 6)', d.dragonFire ? 'Bật' : '—']];
+      ['Giảm Hồi Chiêu', `${d.cdr}%`], ['Thưởng EXP', `+${d.exp_bonus}%`], ['Thưởng Vàng', `+${d.gold_bonus}%`], ['May Mắn', `+${d.luck}%`], ['Hỏa Long (bộ 6)', d.dragonFire ? 'Bật' : '—']];
     rows.forEach((r, i) => { h += `<div class="a srow" style="${P(L.srows[i])}"><span>${r[0]}</span><b>${r[1]}</b></div>`; });
     h += `<div class="a c" style="${P(L.shead)};justify-content:flex-start;font-weight:700;color:#e8a640;font-size:calc(var(--u)*.85px)">Gia Tăng</div>`;
     ['Cài Đặt', 'Thú & Ngoại Hình', 'Thành Tựu', 'Chế Tạo'].forEach((t, i) => { h += `<div class="a hit" data-a="modal" data-m="${['set', 'pets', 'ach', 'craft'][i]}" style="${P(L.sbtn_hit[i])}"></div><div class="a c" style="${P(L.sbtn[i])};font-weight:700;color:#e6dac0;font-size:calc(var(--u)*.8px);pointer-events:none">${t}</div>`; });
@@ -161,10 +160,10 @@ export function initBoard(G, hooks) {
       const cnt = k => G.deck.filter(id => (CARDS[id] && CARDS[id].kind || 'monster') === k).length;
       h += `<h3>Bộ thẻ · Quái ${cnt('monster')}/${DECK_LIMIT.monster} · Kỹ năng ${cnt('skill')}/${DECK_LIMIT.skill} · Di vật ${cnt('relic')}/${DECK_LIMIT.relic}</h3>`;
       const ty = {}; G.deck.forEach(id => { const c = CARDS[id]; if (c && c.type && G.cards.some(x => x.t === id)) ty[c.type] = (ty[c.type] || 0) + 1; });
-      h += `<div class="dim" style="margin-bottom:.6em">Cộng hưởng: ${Object.keys(RESONANCE).map(k => `${k} ${ty[k] || 0}/2${(ty[k] || 0) >= 2 ? ' ✓' : ''}`).join(' · ')}</div>`;
+      h += `<div class="dim" style="margin-bottom:.6em">Cộng hưởng: ${Object.keys(RESONANCE).map(k => `${TYPE_VN[k] || k} ${ty[k] || 0}/2${(ty[k] || 0) >= 2 ? ' ✓' : ''}`).join(' · ')}</div>`;
       h += G.cards.map(cd => {
         const def = CARDS[cd.t]; if (!def) return ''; const on = G.deck.includes(cd.t), cap = CARD_CAP[def.rarity], k = cardLvCost(cd), col = rcol(RARITY.findIndex(r => r.id === def.rarity));
-        return `<div class="row" style="border-color:${col}"><div class="g"><b style="color:${col}">${esc(def.name)}${cd.evo ? ' ✦' : ''}</b> <span class="dim">${def.kind || 'quái'} · Lv.${cd.lv || 1}/${cap} · ${'★'.repeat(cd.star) || 'chưa có sao'}</span><small>${Object.entries(def.bonus).map(([a, v]) => `+${v}% ${a.replace('_pct', '').toUpperCase()}`).join(', ')}${def.note ? esc(def.note) : ''}</small></div>
+        return `<div class="row" style="border-color:${col}"><div class="g"><b style="color:${col}">${esc(def.name)}${cd.evo ? ' ✦' : ''}</b> <span class="dim">${KIND_VN[def.kind || 'monster']} · Lv.${cd.lv || 1}/${cap} · ${'★'.repeat(cd.star) || 'chưa có sao'}</span><small>${Object.entries(def.bonus).map(([a, v]) => `+${v}% ${(BONUS_LABEL[a] || a)}`).join(', ')}${def.note ? esc(def.note) : ''}</small></div>
         <button class="b" data-a="deck" data-id="${esc(cd.t)}">${on ? 'Gỡ' : 'Trang bị'}</button><button class="b" data-a="clv" data-id="${esc(cd.t)}">Lên cấp ${k.gold}g+${k.stone}đá</button>${cd.evo ? '' : `<button class="b" data-a="cevo" data-id="${esc(cd.t)}">Tiến hóa</button>`}</div>`;
       }).join('') || '<div class="dim">Chưa có thẻ nào. Hạ quái và boss để nhận thẻ.</div>';
     } else if (ui.tab === 'quest') {
@@ -200,9 +199,9 @@ export function initBoard(G, hooks) {
     const info = enhanceInfo(it);
     let cmp = ''; if (cur && cur.main.type === it.main.type) { const df = Math.round(it.main.v * (1 + 0.05 * (it.enh || 0)) - cur.main.v * (1 + 0.05 * (cur.enh || 0))); cmp = `<div class="dim">So với đang mặc: <b style="color:${df >= 0 ? '#6bff8a' : '#ff7b7b'}">${df >= 0 ? '+' : ''}${df} ${LABEL[it.main.type]}</b></div>`; }
     const cnt = set ? Object.values(G.eq).filter(x => x && x.set === it.set).length : 0;
-    return `<div style="display:flex;gap:1em"><div class="bigic" style="--c:${col}">${iconHtml(it)}</div><div class="lines" style="min-width:15em"><b style="color:${col};font-size:1.15em">${esc(it.name)}${it.enh ? ' +' + it.enh : ''}${it.trans ? ' ⬆' : ''}</b><div class="dim">Lv.${it.lv} · ${RARITY[it.ri].name} · ${SLOT_NAME[it.slot]}${eq ? ' · Đang mặc' : ''}</div>
+    return `<div style="display:flex;gap:1em"><div class="bigic" style="--c:${col}">${iconHtml(it)}</div><div class="lines" style="min-width:15em"><b style="color:${col};font-size:1.15em">${esc(itemName(it, G.classId || CFG.classId))}${it.enh ? ' +' + it.enh : ''}${it.trans ? ' ⬆' : ''}</b><div class="dim">Lv.${it.lv} · ${RARITY[it.ri].name} · ${SLOT_NAME[it.slot]}${eq ? ' · Đang mặc' : ''}</div>
       <div style="margin-top:.5em"><b style="color:#ffd98a">${esc(fmt(it.main))}</b></div>${it.affixes.map((a, i) => `<div>${i + 1}. ${esc(fmt(a))}</div>`).join('') || '<div class="dim">Không có dòng phụ</div>'}${it.awaken ? `<div style="color:#ffd34d">✦ ${esc(fmtAw(it.awaken))}</div>` : ''}
-      ${set ? `<div style="margin-top:.4em;color:#9fe3ff">Bộ ${esc(set.name)} (${cnt}/6): ${Object.entries(set.bonus).map(([n, b]) => `${n} món${cnt >= +n ? ' ✓' : ''}: ${Object.entries(b).map(([k, v]) => k === 'dragon_fire' ? 'Hỏa Long' : `+${v}% ${k.replace('_pct', '').toUpperCase()}`).join(', ')}`).join(' · ')}</div>` : ''}${cmp}
+      ${set ? `<div style="margin-top:.4em;color:#9fe3ff">Bộ ${esc(set.name)} (${cnt}/6): ${Object.entries(set.bonus).map(([n, b]) => `${n} món${cnt >= +n ? ' ✓' : ''}: ${Object.entries(b).map(([k, v]) => k === 'dragon_fire' ? 'Hỏa Long' : `+${v}% ${(BONUS_LABEL[k] || k)}`).join(', ')}`).join(' · ')}</div>` : ''}${cmp}
       <div class="dim" style="margin-top:.4em">Giá bán ${fmtNum(sellValue(it))} vàng · Phân giải +${salvageGain(it)} đá</div></div></div>
       <div class="acts">${eq ? `<button class="b" data-a="unequip" data-slot="${where}">Tháo</button>` : `<button class="b" data-a="equip" data-id="${it.id}">Mặc</button>`}<button class="b" data-a="lock" data-id="${it.id}">${it.locked ? 'Mở khóa' : 'Khóa'}</button>
       ${eq ? '' : `<button class="b red" data-a="sell" data-id="${it.id}">Bán</button><button class="b" data-a="salv" data-id="${it.id}">Phân giải</button>`}
@@ -231,8 +230,6 @@ export function initBoard(G, hooks) {
     h += ui.tab === 'equip' ? equipView(d) : pageView(d);
     h += dock() + modalHtml();
     board.innerHTML = h;
-    const cv = board.querySelector('#pcv');
-    if (cv) { const x = cv.getContext('2d'), m = MAPS[G.classId || CFG.classId], p = CLASS_PAL[G.classId || CFG.classId]; m.forEach((row, y) => [...row].forEach((ch, xx) => { if (p[ch]) { x.fillStyle = p[ch]; x.fillRect(xx, y, 1, 1); } })); }
   }
 
   // ---------- thao tác ----------
@@ -254,10 +251,10 @@ export function initBoard(G, hooks) {
       case 'unequip': unequip(G, d.slot); ui.sel = null; return commit();
       case 'lock': if (it) it.locked = !it.locked; return commit();
       case 'sell': if (!it) return; if (it.locked) return alert('Vật phẩm đang bị khóa.');
-        if (it.ri >= 4 && !ask(`Bán ${it.name}? Đây là vật phẩm hiếm.`)) return; if (it.ri === 6 && !ask('Vật phẩm ANCIENT – xác nhận lần hai để bán?')) return;
+        if (it.ri >= 4 && !ask(`Bán ${itemName(it, G.classId || CFG.classId)}? Đây là vật phẩm hiếm.`)) return; if (it.ri === 6 && !ask('Vật phẩm ANCIENT – xác nhận lần hai để bán?')) return;
         G.gold += sellValue(it); G.inv = G.inv.filter(x => x.id !== it.id); ui.sel = null; return commit();
       case 'salv': if (!it) return; if (it.locked) return alert('Vật phẩm đang bị khóa.');
-        if (it.ri >= 4 && !ask(`Phân giải ${it.name}?`)) return; if (it.ri === 6 && !ask('Vật phẩm ANCIENT – xác nhận lần hai để phân giải?')) return;
+        if (it.ri >= 4 && !ask(`Phân giải ${itemName(it, G.classId || CFG.classId)}?`)) return; if (it.ri === 6 && !ask('Vật phẩm ANCIENT – xác nhận lần hai để phân giải?')) return;
         G.mat.stone += salvageGain(it); G.inv = G.inv.filter(x => x.id !== it.id); ui.sel = null; return commit();
       case 'enh': { if (!it) return; const inf = enhanceInfo(it); if (!inf) return alert('Đã đạt cấp tối đa.'); if (G.gold < inf.cost) return alert(`Không đủ vàng (cần ${inf.cost}).`);
         if (!ask(`Cường hóa lên +${(it.enh || 0) + 1}?\nChi phí ${inf.cost} vàng · tỷ lệ ${inf.rate}%.\nThất bại không phá hủy trang bị.`)) return;
@@ -272,7 +269,7 @@ export function initBoard(G, hooks) {
       case 'sk': { G.sk = G.sk || {}; if (spLeft(G) <= 0 || (G.sk[d.k] || 0) >= SK_MAX) return; G.sk[d.k] = (G.sk[d.k] || 0) + 1; return commit(); }
       case 'skreset': { const c = 50 * G.level; if (!Object.keys(G.sk || {}).length) return; if (G.gold < c) return alert(`Không đủ vàng (cần ${c}).`); if (!ask(`Đặt lại toàn bộ điểm kỹ năng? Chi phí ${c} vàng.`)) return; G.gold -= c; G.sk = {}; return commit(); }
       case 'deck': { const t = d.id, i = G.deck.indexOf(t), kd = CARDS[t].kind || 'monster', used = G.deck.filter(x => CARDS[x] && (CARDS[x].kind || 'monster') === kd).length;
-        if (i >= 0) G.deck.splice(i, 1); else if (used < DECK_LIMIT[kd]) G.deck.push(t); else return alert(`Ô thẻ loại ${kd} đã đầy (${DECK_LIMIT[kd]}).`); return commit(); }
+        if (i >= 0) G.deck.splice(i, 1); else if (used < DECK_LIMIT[kd]) G.deck.push(t); else return alert(`Ô thẻ ${KIND_VN[kd]} đã đầy (${DECK_LIMIT[kd]}).`); return commit(); }
       case 'clv': case 'cevo': { const c = G.cards.find(x => x.t === d.id); if (!c) return; const df = CARDS[c.t], cap = CARD_CAP[df.rarity];
         if (a === 'clv') { if ((c.lv || 1) >= cap) return alert('Thẻ đã đạt cấp tối đa.'); const k = cardLvCost(c); if (G.gold < k.gold || G.mat.stone < k.stone) return alert('Không đủ vàng hoặc đá.'); G.gold -= k.gold; G.mat.stone -= k.stone; c.lv = (c.lv || 1) + 1; }
         else { if (c.evo) return; if ((c.lv || 1) < cap || c.star < EVO.star) return alert(`Cần thẻ đạt cấp tối đa (${cap}) và ít nhất ${EVO.star} sao.`); if (G.gold < EVO.gold || G.mat.stone < EVO.stone) return alert('Không đủ vàng hoặc đá.');

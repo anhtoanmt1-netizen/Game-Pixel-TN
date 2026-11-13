@@ -12,7 +12,8 @@
   html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Montserrat',sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
   /* Khung chơi luôn 16:9, vừa khít màn hình (có viền đen nếu tỉ lệ khác) nên không có nội dung bị cắt hay che */
   #stage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,calc(var(--vh,1vh)*177.7778));height:min(56.25vw,calc(var(--vh,1vh)*100));background:#0b0d14;overflow:hidden}
-  #game{position:absolute;inset:0}#game canvas{display:block}
+  #game{position:absolute;inset:0}
+  #vig{position:absolute;inset:0;pointer-events:none;z-index:10;background:radial-gradient(ellipse at 50% 55%,transparent 55%,rgba(10,14,30,.28) 100%)} /* viền tối nhẹ cho dịu mắt */#game canvas{display:block}
   #touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:30}
   @media (pointer:coarse){#touch{display:block}}
   #touch>*{pointer-events:auto}
@@ -25,7 +26,7 @@
 </head>
 <body>
 <div id="stage">
-  <div id="game"></div>
+  <div id="game"></div><div id="vig"></div>
   <div id="touch">
     <div id="stick"><div id="knob"></div></div>
     <button class="btn" id="bAtk">Đánh</button>

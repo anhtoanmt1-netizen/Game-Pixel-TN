@@ -16,10 +16,10 @@ export const CLASSES = {
 };
 
 export const SKILLS = {
-  fireball:      { name: 'Fireball',      type: 'proj', tex: 'fire', mult: 2.5, cooldown: 3, speed: 380, pierce: true },
-  shield_bash:   { name: 'Shield Bash',   type: 'aoe', radius: 95, mult: 2.2, cooldown: 5 },
-  arrow_rain:    { name: 'Arrow Rain',    type: 'proj', tex: 'bolt', mult: 2.2, cooldown: 4, speed: 520, pierce: true },
-  shadow_strike: { name: 'Shadow Strike', type: 'aoe', radius: 70, mult: 3.0, cooldown: 5, dash: true },
+  fireball:      { name: 'Cầu Lửa',      type: 'proj', tex: 'fire', mult: 2.5, cooldown: 3, speed: 380, pierce: true },
+  shield_bash:   { name: 'Đập Khiên',   type: 'aoe', radius: 95, mult: 2.2, cooldown: 5 },
+  arrow_rain:    { name: 'Mưa Tên',    type: 'proj', tex: 'arrow', mult: 2.2, cooldown: 4, speed: 520, pierce: true },
+  shadow_strike: { name: 'Ảnh Kích', type: 'aoe', radius: 70, mult: 3.0, cooldown: 5, dash: true },
 };
 
 export const MONSTERS = {

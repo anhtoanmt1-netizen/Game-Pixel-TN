@@ -1,12 +1,12 @@
 // Trang bị, thuộc tính ngẫu nhiên, thẻ bài, chỉ số dẫn xuất (GDD mục 14–24, 26, 28, 29, 44).
 export const RARITY = [
-  { id: 'common', name: 'Common', color: '#ffffff', w: 55, lines: [0, 1] },
-  { id: 'uncommon', name: 'Uncommon', color: '#4ade80', w: 25, lines: [1, 2] },
-  { id: 'rare', name: 'Rare', color: '#4a90ff', w: 12, lines: [2, 3] },
-  { id: 'epic', name: 'Epic', color: '#b066ff', w: 5, lines: [3, 4] },
-  { id: 'legendary', name: 'Legendary', color: '#ffd34d', w: 2, lines: [4, 5] },
-  { id: 'mythic', name: 'Mythic', color: '#ff4040', w: 0.8, lines: [5, 6] },
-  { id: 'ancient', name: 'Ancient', color: '#ff8a5c', w: 0.2, lines: [6, 6] },
+  { id: 'common', name: 'Thường', color: '#ffffff', w: 55, lines: [0, 1] },
+  { id: 'uncommon', name: 'Khá', color: '#4ade80', w: 25, lines: [1, 2] },
+  { id: 'rare', name: 'Hiếm', color: '#4a90ff', w: 12, lines: [2, 3] },
+  { id: 'epic', name: 'Sử thi', color: '#b066ff', w: 5, lines: [3, 4] },
+  { id: 'legendary', name: 'Huyền thoại', color: '#ffd34d', w: 2, lines: [4, 5] },
+  { id: 'mythic', name: 'Thần thoại', color: '#ff4040', w: 0.8, lines: [5, 6] },
+  { id: 'ancient', name: 'Cổ đại', color: '#ff8a5c', w: 0.2, lines: [6, 6] },
 ];
 export const SLOTS = ['weapon', 'helmet', 'armor', 'gloves', 'boots', 'necklace', 'ring1', 'ring2', 'cloak', 'accessory'];
 export const SLOT_NAME = { weapon: 'Vũ khí', helmet: 'Mũ', armor: 'Giáp', gloves: 'Găng tay', boots: 'Giày', necklace: 'Dây chuyền', ring1: 'Nhẫn trái', ring2: 'Nhẫn phải', ring: 'Nhẫn', cloak: 'Áo choàng', accessory: 'Phụ kiện' };
@@ -14,13 +14,17 @@ const KINDS = ['weapon', 'helmet', 'armor', 'gloves', 'boots', 'necklace', 'ring
 const MAIN = { weapon: 'atk', helmet: 'def', armor: 'hp', gloves: 'atk', boots: 'def', necklace: 'hp', ring: 'atk', cloak: 'def', accessory: 'hp' };
 // Mỗi vị trí chỉ sinh nhóm thuộc tính phù hợp (GDD 16.3)
 const POOL = {
-  weapon: ['atk', 'crit_rate', 'crit_damage', 'lifesteal'], helmet: ['hp', 'def', 'exp_bonus'], armor: ['hp', 'def'],
-  gloves: ['atk', 'crit_rate', 'crit_damage'], boots: ['dodge', 'hp', 'def'], necklace: ['hp', 'lifesteal', 'def'],
-  ring: ['crit_rate', 'atk', 'crit_damage'], cloak: ['def', 'dodge'], accessory: ['hp', 'gold_bonus', 'exp_bonus', 'atk'],
+  weapon: ['atk', 'crit_rate', 'crit_damage', 'lifesteal'], helmet: ['hp', 'def', 'exp_bonus', 'luck'], armor: ['hp', 'def'],
+  gloves: ['atk', 'crit_rate', 'crit_damage'], boots: ['dodge', 'hp', 'def', 'luck'], necklace: ['hp', 'lifesteal', 'def', 'luck'],
+  ring: ['crit_rate', 'atk', 'crit_damage', 'luck'], cloak: ['def', 'dodge'], accessory: ['hp', 'gold_bonus', 'exp_bonus', 'atk', 'luck'],
 };
 const FLAT = { atk: [1.2, 3], hp: [6, 15], def: [0.8, 2] }; // [mỗi cấp, gốc]
-const PCT = { crit_rate: [1, 4], crit_damage: [5, 15], lifesteal: [1, 3], dodge: [1, 3], exp_bonus: [3, 8], gold_bonus: [3, 8] };
-export const LABEL = { atk: 'ATK', hp: 'HP', def: 'DEF', crit_rate: 'Crit Rate', crit_damage: 'Crit Damage', lifesteal: 'Lifesteal', dodge: 'Dodge', exp_bonus: 'EXP Bonus', gold_bonus: 'Gold Bonus', atk_pct: 'ATK', hp_pct: 'HP' };
+const PCT = { crit_rate: [1, 4], crit_damage: [5, 15], lifesteal: [1, 3], dodge: [1, 3], exp_bonus: [3, 8], gold_bonus: [3, 8], luck: [2, 6] };
+export const LABEL = { atk: 'Tấn công', hp: 'Sinh lực', def: 'Phòng thủ', crit_rate: 'Tỷ lệ chí mạng', crit_damage: 'ST chí mạng', lifesteal: 'Hút máu', dodge: 'Né tránh', exp_bonus: 'Thưởng EXP', gold_bonus: 'Thưởng vàng', luck: 'May mắn', atk_pct: 'Tấn công', hp_pct: 'Sinh lực' };
+// Nhãn cho mọi loại cộng thêm (thẻ, bộ trang bị, thú…) và tên loại thẻ
+export const BONUS_LABEL = { ...LABEL, skill_dmg: 'ST kỹ năng', cdr: 'Giảm hồi chiêu', heal_kill: 'Hồi máu/hạ quái', boss_dmg: 'ST Boss', crit_rate: 'Chí mạng', dragon_fire: 'Hỏa Long' };
+export const TYPE_VN = { beast: 'Thú', insect: 'Côn trùng', fire: 'Lửa', ice: 'Băng', dark: 'Bóng tối' };
+export const KIND_VN = { monster: 'quái', skill: 'kỹ năng', relic: 'di vật' };
 const PCT_TYPES = new Set([...Object.keys(PCT), 'atk_pct', 'hp_pct']);
 export const fmt = a => `+${a.v}${PCT_TYPES.has(a.type) ? '%' : ''} ${LABEL[a.type]}`;
 
@@ -45,13 +49,15 @@ export function genItem(L, ri, kind, set) {
 }
 
 // Rơi đồ: bảng trọng số + bảo đảm (pity): sau 30 lần không ra Epic+ thì ép ra (GDD 29)
-export function rollRarity(G, minIdx = 0) {
+export function rollRarity(G, minIdx = 0, luck = 0) {
   G.pity = (G.pity || 0) + 1;
   let ri = 0;
   if (G.pity >= 30) ri = 3;
   else {
-    let r = Math.random() * 100;
-    for (let i = 0; i < RARITY.length; i++) { r -= RARITY[i].w; if (r <= 0) { ri = i; break; } }
+    // May mắn nhân trọng số từ bậc Hiếm trở lên (bậc càng cao càng được lợi nhiều)
+    const w = RARITY.map((x, i) => x.w * (i >= 2 ? 1 + (luck / 100) * i : 1));
+    let r = Math.random() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) { ri = i; break; } }
   }
   ri = Math.max(ri, minIdx);
   if (ri >= 3) G.pity = 0;
@@ -87,7 +93,7 @@ export function unequip(G, s) {
 
 // Chỉ số cuối: gốc + cộng thẳng, sau đó % (GDD 28), có áp trần (GDD 44)
 export function derive(c, G, CFG) {
-  const t = { atk: 0, def: 0, hp: 0, crit_rate: 0, crit_damage: 0, lifesteal: 0, dodge: 0, exp_bonus: 0, gold_bonus: 0, atk_pct: 0, hp_pct: 0, skill_dmg: 0, cdr: 0, heal_kill: 0, boss_dmg: 0, dragon_fire: 0 };
+  const t = { atk: 0, def: 0, hp: 0, crit_rate: 0, crit_damage: 0, lifesteal: 0, dodge: 0, exp_bonus: 0, gold_bonus: 0, luck: 0, atk_pct: 0, hp_pct: 0, skill_dmg: 0, cdr: 0, heal_kill: 0, boss_dmg: 0, dragon_fire: 0 };
   const add = a => { if (a && t[a.type] !== undefined) t[a.type] += a.v; };
   Object.values(G.eq).forEach(it => { if (it) { add({ type: it.main.type, v: it.main.v * (1 + 0.05 * (it.enh || 0)) * (it.trans ? 1.25 : 1) }); it.affixes.forEach(add); if (it.awaken) add(it.awaken); } });
   const cnt = {};
@@ -115,14 +121,14 @@ export function derive(c, G, CFG) {
     dodge: Math.min(c.dodge + t.dodge, CFG.dodgeCap),
     lifesteal: Math.min(t.lifesteal, 25),
     exp_bonus: Math.min(t.exp_bonus, 100),
-    gold_bonus: Math.min(t.gold_bonus, 100),
+    gold_bonus: Math.min(t.gold_bonus, 100), luck: Math.min(t.luck, 100),
     dragonFire: t.dragon_fire, skillDmg: t.skill_dmg, cdr: Math.min(t.cdr, 40), heal_kill: t.heal_kill, boss_dmg: t.boss_dmg,
     speed: Math.round(c.speed * (1 + 0.03 * (sk.swift || 0))),
   };
 }
 
 // Bộ trang bị (GDD 17.1): bậc 2 và 4 món. Bậc 6 món (kỹ năng Hỏa Long) chưa làm.
-export const SETS = { dragon: { name: 'Dragon Knight', bonus: { 2: { hp_pct: 10 }, 4: { atk_pct: 15 }, 6: { dragon_fire: 1 } } } };
+export const SETS = { dragon: { name: 'Hiệp Sĩ Rồng', bonus: { 2: { hp_pct: 10 }, 4: { atk_pct: 15 }, 6: { dragon_fire: 1 } } } };
 
 // Cường hóa +1..+20: không phá hủy đồ; thất bại cộng bảo hiểm +5% tỷ lệ lần sau (GDD 17)
 export function enhanceInfo(it) {
@@ -207,14 +213,14 @@ export const PETS = {
 
 // Tiến hóa ngoại hình (GDD 10.2): chỉ thay đổi hình ảnh, không tăng sức mạnh; người chơi có thể giữ ngoại hình cũ
 export const LOOK_LV = [1, 15, 40, 70, 100];
-export const LOOK_NAMES = ['Basic', 'Advanced', 'Elite', 'Legendary', 'Mythic'];
+export const LOOK_NAMES = ['Sơ cấp', 'Tiến cấp', 'Tinh anh', 'Huyền thoại', 'Thần thoại'];
 export const lookStage = G => {
   const max = LOOK_LV.filter(l => G.level >= l).length - 1;
   return G.look == null ? max : Math.min(G.look, max);
 };
 
 // Awaken (mở 1 thuộc tính đặc biệt) và Transcend (đột phá trang bị cao cấp) – GDD 17
-export const AW = { boss_dmg: ['Boss Damage', 4, 10], skill_dmg: ['Skill Damage', 6, 15], cdr: ['Cooldown Reduction', 2, 5], heal_kill: ['HP/Kill', 0.5, 1.5] };
+export const AW = { boss_dmg: ['Sát thương Boss', 4, 10], skill_dmg: ['Sát thương kỹ năng', 6, 15], cdr: ['Giảm hồi chiêu', 2, 5], heal_kill: ['Hồi máu/hạ quái', 0.5, 1.5] };
 export const awakenCost = it => ({ gold: Math.round(150 * (1 + it.ri) * Math.max(1, it.lv / 5)), stone: 10 * (1 + it.ri) });
 export function rollAwaken() {
   const ks = Object.keys(AW), type = ks[Math.floor(Math.random() * ks.length)], [, lo, hi] = AW[type];
@@ -222,3 +228,4 @@ export function rollAwaken() {
 }
 export const fmtAw = a => `+${a.v}% ${AW[a.type][0]}`;
 export const TRANS = { gold: 5000, stone: 300, enh: 15 };
+CARDS.r_clover = { name: 'Di vật Cỏ Bốn Lá', kind: 'relic', rarity: 'epic', bonus: { luck: 15 } };

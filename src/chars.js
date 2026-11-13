@@ -1,0 +1,3 @@
+// Sinh tự động bởi tools/build_chars.py. Khung hình mỗi lớp trong assets/chars/<lớp>.png
+export const CELL = [200, 144], FEET = [100, 136];
+export const CHARS = {"mage": {"idle": ["i0", "i1", "i2", "i3"], "atk": ["a0", "a1"], "skl": ["a2", "a3"], "face": {"atk": "right", "skl": "right"}}, "knight": {"idle": ["down"], "atk": ["a0", "a1", "a2"], "skl": ["s0", "s1", "s2"], "face": {"atk": "left", "skl": "right"}}, "elf": {"idle": ["down"], "atk": ["a0", "a1", "a2"], "skl": ["s0", "s1", "s2"], "face": {"atk": "right", "skl": "right"}}, "rogue": {"idle": ["down"], "atk": ["a0", "a1", "a2"], "skl": ["s0", "s1", "s2"], "face": {"atk": "left", "skl": "right"}}};

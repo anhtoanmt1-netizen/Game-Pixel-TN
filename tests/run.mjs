@@ -5,9 +5,12 @@ import * as I from '../src/items.js';
 import { CFG, CLASSES, MONSTERS, AREAS, QUESTS } from '../src/data.js';
 import { valid } from '../src/save.js';
 import { MAPS, DEFS, CLASS_PAL } from '../src/sprites.js';
-import { generateLayout, AREA_THEME } from '../src/maps.js';
+import { generateLayout, AREA_THEME, paintGround, GROUND_S } from '../src/maps.js';
 import { THEMES, CELL } from '../src/themes.js';
 import fs from 'node:fs';
+import { buildNav, findPath, los } from '../src/nav.js';
+import { frameFor } from '../src/charanim.js';
+import { CHARS } from '../src/chars.js';
 
 let pass = 0, fail = 0;
 const test = (name, fn) => { try { fn(); pass++; console.log('  ok  ' + name); } catch (e) { fail++; console.log('FAIL  ' + name + '\n      ' + e.message); } };
@@ -160,10 +163,17 @@ test('mọi khu vực có chủ đề màu và atlas tồn tại, đủ frame', 
   const fr = JSON.parse(fs.readFileSync(new URL(`../assets/${th}.json`, import.meta.url))).frames;
   Object.values(THEMES[th]).flat().forEach(([n]) => assert.ok(fr[n], `${th}:${n}`));
 }));
-test('bố cục bản đồ xác định (cùng khu vực cho cùng kết quả) và phủ kín lưới ô', () => {
+test('bố cục bản đồ xác định, nền mịn vẽ ra đúng kích thước và màu hợp lệ', () => {
   const a = generateLayout('forest', AREAS.forest, W, H), b = generateLayout('forest', AREAS.forest, W, H);
-  assert.deepEqual(a.props, b.props); assert.equal(a.ground.length, Math.ceil(W / CELL) * Math.ceil(H / CELL));
+  assert.deepEqual(a.props, b.props); assert.equal(a.path.length, a.cols * a.rows);
+  const g = paintGround(a, W, H), g2 = paintGround(b, W, H); assert.equal(g.w, Math.ceil(W / GROUND_S)); assert.equal(g.data.length, g.w * g.h * 4);
+  assert.deepEqual(Array.from(g.data.slice(0, 400)), Array.from(g2.data.slice(0, 400)));
+  let mn = 255, mxx = 0; for (let i = 0; i < g.data.length; i += 4 * 97) { mn = Math.min(mn, g.data[i], g.data[i + 1], g.data[i + 2]); mxx = Math.max(mxx, g.data[i], g.data[i + 1], g.data[i + 2]); } assert.ok(mn > 40 && mxx < 250);
 });
+test('bản đồ gọn: ít vật thể, không dồn cụm quá dày', () => Object.keys(AREAS).forEach(id => {
+  const L = generateLayout(id, AREAS[id], W, H); assert.ok(L.props.length <= 330, `${id}: ${L.props.length} vật thể`);
+  const flat = L.props.filter(p => p.cat === 'deco').length; assert.ok(flat <= 100, `${id}: ${flat} deco`);
+}));
 test('mọi bản đồ: vật cản không đè điểm cần chừa; người chơi đi được từ điểm xuất phát tới mọi cổng, checkpoint, chỗ quái', () => {
   Object.keys(AREAS).forEach(id => {
     const L = generateLayout(id, AREAS[id], W, H), R = 11, G = 24, gw = Math.ceil(W / G), gh = Math.ceil(H / G);
@@ -257,6 +267,50 @@ try { // kiểm thử khói cho bảng giao diện với DOM giả (không có t
   click({ a: 'travel', id: 'cave' }); assert.equal(traveled, 'cave');
   assert.ok(changed > 5); pass++; console.log('  ok  bảng giao diện (DOM giả): mọi tab, hộp thoại và thao tác chính chạy đúng');
 } catch (e) { fail++; console.log('FAIL  bảng giao diện (DOM giả)\n      ' + (e.stack || e.message).split('\n').slice(0, 4).join('\n      ')); }
+
+console.log('Nhân vật & Auto');
+test('dò đường vòng qua tường có khe hở; không cắt ngang vật cản', () => {
+  const blocks = [{ x: 500, y: 300, w: 40, h: 500 }], nav = buildNav(blocks, 1000, 600);
+  assert.equal(los(nav, 300, 300, 700, 300), false);
+  const p = findPath(nav, 300, 300, 700, 300); assert.ok(p && p.length >= 2, 'có đường');
+  let a = { x: 300, y: 300 }; for (const b of p) { assert.ok(los(nav, a.x, a.y, b.x, b.y), 'đoạn thông'); a = b; }
+  assert.ok(Math.hypot(a.x - 700, a.y - 300) < 30);
+  assert.equal(findPath(buildNav([{ x: 500, y: 300, w: 40, h: 700 }], 1000, 600), 300, 300, 700, 300), null); // tường kín
+});
+test('mọi bản đồ: từ điểm xuất phát dò được đường tới mọi cổng, checkpoint, chỗ quái', () => {
+  Object.keys(AREAS).forEach(id => {
+    const L = generateLayout(id, AREAS[id], W, H), nav = buildNav(L.blocks, W, H), s = AREAS[id].checkpoints[0];
+    L.keep.forEach(k => assert.ok(findPath(nav, s.x, s.y, k.x, k.y), `${id}: không có đường tới (${k.x},${k.y})`));
+  });
+});
+test('hoạt ảnh: khung hình luôn tồn tại trong atlas và hướng lật đúng', () => {
+  for (const cls of Object.keys(CHARS)) {
+    const fr = JSON.parse(fs.readFileSync(new URL(`../assets/chars/${cls}.json`, import.meta.url))).frames;
+    for (const dir of ['up', 'down', 'left', 'right']) for (const moving of [true, false]) for (const tt of [0, 0.3, 1.7]) {
+      const r = frameFor(cls, { dir, moving, t: tt, aimRight: true }); assert.ok(fr[r.name], `${cls} ${r.name}`);
+      assert.equal(r.flipX, dir === 'right' && (moving || true) && r.name === 'left');
+    }
+    for (const kind of ['atk', 'skl']) for (let p = 0; p <= 1; p += 0.1) for (const aimRight of [true, false]) {
+      const r = frameFor(cls, { dir: 'down', moving: false, t: 0, aimRight, lunge: 10, atk: { kind, p } }); assert.ok(fr[r.name], `${cls} ${kind} ${r.name}`);
+      assert.equal(r.flipX, aimRight !== (CHARS[cls].face[kind] === 'right'));
+    }
+  }
+});
+test('may mắn tăng tỷ lệ rơi đồ từ bậc Hiếm; tôn trọng mức tối thiểu', () => {
+  const share = luck => { let n = 0; for (let i = 0; i < 30000; i++) { if (I.rollRarity({ pity: -1e9 }, 0, luck) >= 2) n++; } return n / 30000; };
+  const a = share(0), b = share(100); assert.ok(b > a * 1.6, `${a} → ${b}`);
+  assert.ok(I.rollRarity({ pity: -1e9 }, 3, 0) >= 3);
+});
+test('chỉ số may mắn: có dòng thuộc tính, bị chặn ở 100%, hiển thị tiếng Việt', () => {
+  const G = newG(), it = I.genItem(10, 4, 'ring'); it.affixes = [{ type: 'luck', v: 500 }]; G.eq.ring1 = it; G.level = 10;
+  assert.equal(I.derive(CLASSES.mage, G, CFG).luck, 100); assert.equal(I.fmt({ type: 'luck', v: 4 }), '+4% May mắn');
+  assert.ok(I.fmt({ type: 'crit_rate', v: 2 }).includes('chí mạng'));
+  let seen = false; for (let i = 0; i < 3000 && !seen; i++) seen = I.genItem(30, 5, 'ring').affixes.some(a => a.type === 'luck'); assert.ok(seen);
+});
+test('tên trang bị tiếng Việt khớp icon', () => {
+  assert.equal(INV.itemName({ slot: 'weapon', ri: 2 }, 'mage'), 'Trượng Hiếm'); assert.equal(INV.itemName({ slot: 'helmet', ri: 0 }, 'knight'), 'Mũ giáp Thường');
+  assert.ok(INV.itemName({ slot: 'accessory', ri: 4, set: 'dragon' }, 'elf').includes('Sách phép'));
+});
 
 console.log(`\n${pass} đạt, ${fail} lỗi`);
 process.exit(fail ? 1 : 0);

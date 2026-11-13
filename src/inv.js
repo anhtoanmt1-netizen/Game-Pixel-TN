@@ -1,5 +1,5 @@
 // Logic túi đồ thuần (kiểm thử được trong Node): icon theo loại/độ hiếm, lọc, sắp xếp, bán/phân giải nhanh, mặc đồ kéo-thả.
-import { RARITY, STONE } from './items.js';
+import { RARITY, STONE, SETS } from './items.js';
 
 // Sprite icon: 6 cột = bậc màu của bộ ảnh (xám, lục, lam, tím, đỏ, vàng); 12 hàng = loại trang bị
 const ROW = { sword: 0, bow: 1, staff: 2, blades: 3, helmet: 4, boots: 5, ring: 6, cloak: 7, necklace: 8, gloves: 9, hat: 10, book: 11 };
@@ -76,4 +76,12 @@ export function moveEq(G, from, to) { // kéo giữa hai ô trang bị (đổi n
   const b = G.eq[to]; if (b && !canEquip(b, from)) return false;
   if (b) G.eq[from] = b; else delete G.eq[from];
   G.eq[to] = a; return true;
+}
+
+// Tên hiển thị tiếng Việt, khớp với icon (vũ khí theo lớp nhân vật); không phụ thuộc tên cũ đã lưu
+const NOUN = { weapon: { mage: 'Trượng', knight: 'Kiếm', elf: 'Cung', rogue: 'Song đao' }, helmet: { mage: 'Mũ phù thủy', _: 'Mũ giáp' }, armor: 'Giáp', gloves: 'Găng tay', boots: 'Giày', necklace: 'Dây chuyền', ring: 'Nhẫn', cloak: 'Áo choàng', accessory: 'Sách phép' };
+export function itemName(it, classId) {
+  let n = NOUN[it.slot] || it.slot; if (typeof n === 'object') n = n[it.wt || classId] || n._ || Object.values(n)[0];
+  const set = it.set && SETS[it.set];
+  return `${n} ${RARITY[Math.min(it.ri, 6)].name}${set ? ' · ' + set.name : ''}`;
 }

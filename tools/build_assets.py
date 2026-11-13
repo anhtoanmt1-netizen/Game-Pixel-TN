@@ -48,21 +48,23 @@ FLOW=[36,37,38,40,42,43,44,45,47,48,49]; TUFT=[93,94,95,28,29,61,62,63,104]; LEA
 BONES=[79,88,89,87]
 def R(*xs): return [(s,i) for s,l in xs for i in l]
 SPEC={
- 'forest':dict(tree=R(('iso',[0,2,3,6,9,10,11,1,7,4])),rock=R(('iso',range(30,37)),('nature',[1,2,4,6,8,9])),log=R(('logs',LOGS),('iso',[40,41]),('nature',[54])),
-   stump=R(('iso',[37]),('nature',[59])),bush=R(('iso',IB),('bush',BUSH)),deco=R(('nature',FLOW+TUFT+LEAF+PEBBLE),('iso',SMALL_ISO)),mush=R(('mush',mush)),pool=R(('nature',[58,60,53,57])),crystal=[]),
- 'cave':dict(tree=[],rock=R(('iso',range(30,37)),('nature',[1,2,3,4,5,6,8,9])),log=R(('nature',[55]),('iso',[38])),stump=R(('nature',[59])),
-   bush=R(('iso',IB[:8])),deco=R(('nature',TUFT+PEBBLE+BONES),('iso',SMALL_ISO[:5])),mush=R(('mush',mush)),pool=R(('nature',[58,60,53])),crystal=R(('nature',[77,78,80,82,84]))),
- 'volcano':dict(tree=R(('nature',[26,26,26,56]),('iso',[38,38])),rock=R(('iso',range(30,37)),('nature',[1,2,5,7,8,9])),log=R(('logs',[0,3,6,9,12,15])),stump=R(('nature',[59])),
-   bush=R(('iso',IB[:8]),('bush',BUSH[:12])),deco=R(('nature',TUFT+PEBBLE+BONES+[85,90,91]),('iso',SMALL_ISO[:5])),mush=[],pool=R(('nature',[58,60,53,57])),crystal=R(('nature',[80,82,85]))),
- 'ice':dict(tree=R(('iso',[1,5,0,2,6]),('nature',[24])),rock=R(('iso',range(30,37)),('nature',[1,2,4,6,8,9])),log=R(('logs',[1,4,7,10,13])),stump=R(('iso',[37]),('nature',[59])),
-   bush=R(('iso',IB),('bush',BUSH[:16])),deco=R(('nature',TUFT+LEAF+PEBBLE),('iso',SMALL_ISO)),mush=R(('mush',mush[:12])),pool=R(('nature',[58,60,53,57])),crystal=R(('nature',[84,77,84]))),
- 'dark':dict(tree=R(('nature',[26,26,56]),('iso',[4,5,9,4,5,9])),rock=R(('iso',range(30,37)),('nature',[1,2,3,4,6,8,9])),log=R(('logs',[2,5,8,11])),stump=R(('nature',[59])),
-   bush=R(('iso',IB[:8]),('bush',BUSH[:12])),deco=R(('nature',TUFT+PEBBLE+BONES),('iso',SMALL_ISO[:5])),mush=R(('mush',mush),('nature',[68,41 if False else 68])),pool=R(('nature',[58,60,53])),crystal=R(('nature',[77,78,77,78]))),
+ 'forest':dict(tree=R(('iso',[0,2,6,9,10,7,1,4]),('nature',[24])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,4,6])),log=R(('logs',[0,3,6])),stump=R(('iso',[37])),bush=R(('nature',[30,31,32,33])),deco=R(('nature',FLOW)),mush=R(('mush',mush[:20])),pool=R(('nature',[58,60,53])),crystal=[]),
+ 'cave':dict(tree=[],rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,3,4,6,8])),log=[],stump=[],bush=[],deco=R(('nature',[87,88,79])),mush=R(('mush',mush[:24])),pool=R(('nature',[58,60])),crystal=R(('nature',[77,78,80,82,84]))),
+ 'volcano':dict(tree=R(('nature',[26,26,26,56])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[5,7,8,9])),log=[],stump=[],bush=[],deco=R(('nature',[87,88,79,85])),mush=[],pool=R(('nature',[58,60,53])),crystal=R(('nature',[80,82]))),
+ 'ice':dict(tree=R(('iso',[1,5,0,2,6]),('nature',[24])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,4,6])),log=[],stump=R(('iso',[37])),bush=R(('nature',[31,32])),deco=[],mush=R(('mush',mush[:8])),pool=R(('nature',[58,60,53])),crystal=R(('nature',[84,77]))),
+ 'dark':dict(tree=R(('nature',[26,26,56]),('iso',[4,5,9])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,3,6])),log=[],stump=[],bush=[],deco=R(('nature',[87,88,79])),mush=R(('mush',mush[:24]),('nature',[68])),pool=R(('nature',[58,60])),crystal=R(('nature',[77,78]))),
 }
 HEIGHT={'tree':104,'bush':None,'deco':None}
 SCALE={'iso_rock':.72,'iso_bush':.6,'logw':64,'tree_h':104}
+def strip_base(im):
+    a=np.array(im).copy(); h=a.shape[0]; y0=int(h*0.72); hsv=rgb2hsv(a[...,:3]/255.); hue=hsv[...,0]*360
+    kill=np.zeros(a.shape[:2],bool); kill[y0:]=((hue>55)&(hue<170)&(hsv[...,1]>0.22))[y0:]&(a[...,3]>0)[y0:]
+    a[...,3]=np.where(kill,0,a[...,3]); al=a[...,3]>0; lab,n=ndi.label(al); sizes=ndi.sum(al,lab,range(1,n+1))
+    keep=np.isin(lab,[i+1 for i,s_ in enumerate(sizes) if s_>=0.04*al.sum()]); a[...,3]=np.where(keep,a[...,3],0)
+    ys,xs=np.where(a[...,3]>0); return Image.fromarray(a[ys.min():ys.max()+1,xs.min():xs.max()+1])
 def prep(theme,cat,src,i):
     im=load(src,i)
+    if src=='iso' and cat in ('tree','rock','stump'): im=strip_base(im)
     if cat=='tree': im=fit(im,h=104 if src=='iso' else 100) if src=='iso' else fit(im,h=96 if im.height<80 else 80)
     elif cat=='rock': im=fit(im,s=.72 if src=='iso' else 1.0)
     elif cat=='log': im=fit(im,w=64)
@@ -70,7 +72,7 @@ def prep(theme,cat,src,i):
     elif cat=='bush': im=fit(im,s=.62 if src=='iso' else 1.0)
     elif cat=='deco': im=fit(im,s=.8 if src=='iso' else (.9 if src=='nature' and im.height>30 else 1.0))
     elif cat=='mush': im=fit(im,s=.85)
-    elif cat=='pool': im=fit(im,s=2)
+    elif cat=='pool': im=im.resize((im.width*2,im.height*2),Image.LANCZOS)
     elif cat=='crystal': im=fit(im,h=46)
     fx=FX[theme].get(GK[cat],{})
     return grade(im,**fx) if fx else im
@@ -115,10 +117,6 @@ for th in SPEC:
         names=[]
         for k,(src,i) in enumerate(SPEC[th][cat]):
             im=prep(th,cat,src,i); n=f'{cat}_{k}'; frames[n]=im; names.append([n,im.width,im.height])
-        meta[cat]=names
-    for cat,idxs in (('ground',GROUND[th]),('path',PATH[th])):
-        names=[]
-        for k,im in enumerate(tiles(th,idxs,cat,th+cat)): n=f'{cat}_{k}'; frames[n]=im; names.append([n,48,48])
         meta[cat]=names
     THEMES[th]=meta; print(th,len(frames),pack(frames,th),{c:len(v) for c,v in meta.items()})
 open('/home/claude/ETERNAL-PIXEL/src/themes.js','w',encoding='utf-8').write('// Sinh tự động bởi tools/build_assets.py từ các sheet ảnh môi trường. Mỗi mục: [tên frame, rộng, cao]\nexport const CELL = 48;\nexport const THEMES = '+json.dumps(THEMES,ensure_ascii=False)+';\n')

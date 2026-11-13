@@ -5,8 +5,12 @@ import { lookStage, PETS, ACHS, RARITY, CARDS, derive, expNeed, genItem, rollRar
 import { save, load } from './save.js';
 import { initBoard, pickClass } from './board.js';
 import { initHud } from './hud.js';
+import { itemName } from './inv.js';
+import { buildNav, findPath, los } from './nav.js';
 import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
+import { CHARS, CELL, FEET } from './chars.js';
+import { frameFor } from './charanim.js';
 import { buildMap, AREA_THEME } from './maps.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
@@ -32,6 +36,7 @@ class GameScene extends Phaser.Scene {
   preload() { // chỉ nạp atlas của chủ đề màu khu vực hiện tại
     const t = AREA_THEME[AREA_ID];
     this.load.atlas('th_' + t, `assets/${t}.png`, `assets/${t}.json`);
+    const c = CFG.classId; this.load.atlas('ch_' + c, `assets/chars/${c}.png`, `assets/chars/${c}.json`); // sprite nhân vật
   }
 
   makeTextures() {
@@ -62,6 +67,7 @@ class GameScene extends Phaser.Scene {
     tex('ice_king', 76, 76, g => { g.fillStyle(0x6fb6e8).fillRoundedRect(4, 8, 68, 60, 14); g.fillStyle(0xffffff).fillRect(46, 24, 9, 9); g.fillTriangle(10, 8, 20, 0, 30, 8).fillTriangle(46, 8, 56, 0, 66, 8); });
     tex('shade', 28, 28, g => { g.fillStyle(0x4a2a6a).fillCircle(14, 14, 11); g.fillStyle(0xff4aff).fillRect(9, 10, 4, 4).fillRect(16, 10, 4, 4); });
     tex('ma_vuong', 88, 88, g => { g.fillStyle(0x2a0f3a).fillRoundedRect(6, 10, 76, 70, 20); g.fillStyle(0xff4040).fillRect(30, 30, 10, 10).fillRect(50, 30, 10, 10); g.fillStyle(0x8a3fd0).fillTriangle(10, 10, 22, 0, 34, 10).fillTriangle(54, 10, 66, 0, 78, 10); });
+    tex('arrow', 26, 7, g => { g.fillStyle(0xe6d29a).fillRect(0, 3, 19, 2); g.fillStyle(0xffffff).fillTriangle(26, 3.5, 18, 0, 18, 7); g.fillStyle(0xa6e08a).fillRect(0, 1, 4, 5); });
     tex('px', 2, 2, g => { g.fillStyle(0xffffff).fillRect(0, 0, 2, 2); }); // khối va chạm vô hình
     g.destroy();
     buildSprites(this, CFG.classId); // thay hình khối tạm bằng pixel art (cùng tên texture)
@@ -83,11 +89,16 @@ class GameScene extends Phaser.Scene {
     // Bản đồ: nền gạch 48px, đường mòn, ao hồ, cây/đá/cảnh vật theo chủ đề màu của khu vực
     const built = buildMap(this, AREA_ID, AREA, W, H);
     this.trees = built.group;
+    this.nav = buildNav(built.layout.blocks, W, H); this.navT = 0; this.path = null; this.pi = 0;
 
     // Người chơi
     const c = CLASSES[CFG.classId];
-    this.p = this.physics.add.sprite(CHECKPOINTS[0].x, CHECKPOINTS[0].y, 'player').setDepth(5).setCollideWorldBounds(true);
-    this.p.body.setSize(20, 20);
+    // Thân vật lý vô hình (22×16 ở chân) + hình ảnh tách riêng để nhún/lắc/lao tới mà không ảnh hưởng va chạm
+    this.p = this.physics.add.sprite(CHECKPOINTS[0].x, CHECKPOINTS[0].y, 'px').setVisible(false).setCollideWorldBounds(true);
+    this.p.body.setSize(22, 16);
+    this.shadow = this.add.ellipse(this.p.x, this.p.y, 40, 13, 0x000000, 0.3);
+    this.pv = this.add.image(this.p.x, this.p.y, 'ch_' + CFG.classId, 'down').setOrigin(FEET[0] / CELL[0], FEET[1] / CELL[1]);
+    this.anim = { t: 0, atk: null, aim: 1 }; this.vel = new Phaser.Math.Vector2(0, 0);
     this.ps = {
       ...c, maxHp: c.hp * CFG.hpScale, hp: c.hp * CFG.hpScale,
       atkCd: 0, skillCd: 0, dodgeCd: 0, dashT: 0, iframes: 0,
@@ -119,7 +130,6 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.p, this.trees);
     this.physics.add.collider(this.enemies, this.trees);
     this.physics.add.collider(this.enemies, this.enemies);
-    this.physics.add.collider(this.projs, this.trees, pr => pr.destroy());
     this.physics.add.overlap(this.projs, this.enemies, (pr, e) => this.onProjHit(pr, e));
 
     // Camera: theo nhân vật, giới hạn trong bản đồ
@@ -181,7 +191,7 @@ class GameScene extends Phaser.Scene {
     const boss = e.d.boss, out = [];
     const rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
     const n = boss ? 2 : (rift || Math.random() < 0.45 ? 1 : 0);
-    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0)), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined) });
+    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), this.ps.luck), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined) });
     if (Math.random() < (boss ? 1 : 0.1)) out.push({ card: e.id });
     const extra = Object.keys(CARDS).filter(k => CARDS[k].kind); // thẻ kỹ năng / di vật
     if (Math.random() < (boss ? 0.6 : 0.04)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });
@@ -201,7 +211,7 @@ class GameScene extends Phaser.Scene {
       if (!(this.autoAll || d.low || E)) return true;
       if (d.card) { addCard(G, d.card); this.msg(`Nhận thẻ: ${CARDS[d.card].name}`); }
       else if (G.inv.length >= G.cap) { this.msg('Túi đồ đã đầy!'); return true; }
-      else { G.inv.push(d.item); this.msg(`Nhặt: ${d.item.name}`); }
+      else { G.inv.push(d.item); this.msg(`Nhặt: ${itemName(d.item, CFG.classId)}`); }
       d.destroy(); sfx('pick'); this.board.refresh(); this.persist();
       return false;
     });
@@ -312,7 +322,7 @@ class GameScene extends Phaser.Scene {
     const dmg = calcDamage(raw, 1, s.def);
     s.hp = Math.max(0, s.hp - dmg);
     this.popup(this.p.x, this.p.y - 20, dmg, '#ff6b6b'); sfx('hurt');
-    this.p.setTint(0xff8888); this.time.delayedCall(80, () => this.p.clearTint());
+    this.pv.setTint(0xff8888); this.time.delayedCall(80, () => { if (!this.chilled) this.pv.clearTint(); });
     if (fx === 'slow') s.slowT = 2;
     if (fx === 'freeze') { s.freezeT = 1; this.msg('Bị đóng băng!'); }
     if (s.hp <= 0) this.playerDie();
@@ -320,11 +330,11 @@ class GameScene extends Phaser.Scene {
 
   playerDie() {
     this.playerDead = true;
-    this.p.body.setVelocity(0, 0); this.p.setAlpha(0.4);
+    this.p.body.setVelocity(0, 0); this.vel.set(0, 0);
     this.msg('Bạn đã bị hạ gục – hồi sinh tại điểm gần nhất (không mất đồ)');
     this.time.delayedCall(1500, () => {
       const cp = [...CHECKPOINTS].sort((a, b) => dist(a, this.p) - dist(b, this.p))[0];
-      this.p.setPosition(cp.x, cp.y).setAlpha(1);
+      this.p.setPosition(cp.x, cp.y);
       this.ps.hp = this.ps.maxHp; this.ps.iframes = 2;
       this.playerDead = false; this.target = null;
       if (AREA.mode === 'survival') { this.enemies.clear(true, true); this.wave = 0; this.waveT = 3; } // thua thì làm lại từ đợt 1
@@ -369,6 +379,31 @@ class GameScene extends Phaser.Scene {
   }
 
   // ---------- Người chơi ----------
+  steerAuto(t) { // đi thẳng nếu thông thoáng, ngược lại đi theo đường A* đã kéo căng
+    const p = this.p;
+    if (los(this.nav, p.x, p.y, t.x, t.y)) { this.path = null; return new Phaser.Math.Vector2(t.x - p.x, t.y - p.y).normalize(); }
+    if (!this.path || this.navT <= 0 || dist(this.pathGoal || { x: -999, y: -999 }, t) > 70) {
+      this.path = findPath(this.nav, p.x, p.y, t.x, t.y); this.pi = 0; this.navT = 0.6; this.pathGoal = { x: t.x, y: t.y };
+    }
+    if (!this.path || !this.path.length) return new Phaser.Math.Vector2(t.x - p.x, t.y - p.y).normalize();
+    let w = this.path[this.pi];
+    while (this.pi < this.path.length - 1 && dist(p, w) < 20) w = this.path[++this.pi];
+    return new Phaser.Math.Vector2(w.x - p.x, w.y - p.y).normalize();
+  }
+
+  startAtk(kind, aimX) { this.anim.atk = { kind, t: 0, dur: kind === 'atk' ? 0.28 : 0.42 }; this.anim.aim = aimX; }
+
+  updateChar(dt) { // chọn khung hình, nhún/lắc, bóng đổ, nhấp nháy khi né / bị đánh
+    const a = this.anim, s = this.ps, f = this.face; a.t += dt;
+    if (a.atk) { a.atk.t += dt; if (a.atk.t >= a.atk.dur) a.atk = null; }
+    const dir = Math.abs(f.x) > Math.abs(f.y) ? (f.x < 0 ? 'left' : 'right') : (f.y < 0 ? 'up' : 'down');
+    const r = frameFor(CFG.classId, { dir, moving: this.p.body.velocity.length() > 25 && !this.playerDead, t: a.t, aimRight: a.aim >= 0, lunge: this.ps.melee ? 14 : 5, atk: a.atk && { kind: a.atk.kind, p: a.atk.t / a.atk.dur } });
+    this.pv.setFrame(r.name).setFlipX(r.flipX).setPosition(this.p.x + r.dx, this.p.y + r.dy).setRotation(r.rot).setScale(r.sx, r.sy).setDepth(10 + this.p.y);
+    const al = this.playerDead ? 0.4 : (s.iframes > 0 ? 0.6 : 1); this.pv.setAlpha(al); this.shadow.setPosition(this.p.x, this.p.y - 1).setAlpha(al).setDepth(9 + this.p.y);
+    const chill = s.freezeT > 0 || s.slowT > 0;
+    if (chill !== this.chilled) { this.chilled = chill; if (chill) this.pv.setTint(0x9fd8ff); else this.pv.clearTint(); }
+  }
+
   drawAura() { // ngoại hình tiến hóa: chỉ là hiệu ứng hình ảnh
     const st = lookStage(G); if (!st) return;
     const cols = [0, 0x6fb6ff, 0x6ee7ff, 0xffd34d, 0xff4aff], c = cols[st], p = this.p;
@@ -494,8 +529,10 @@ class GameScene extends Phaser.Scene {
   }
 
   fire(tex, mult, speed, pierce, tgt, src = this.p) {
-    const dir = tgt ? new Phaser.Math.Vector2(tgt.x - src.x, tgt.y - src.y).normalize() : this.face.clone();
-    const pr = this.projs.create(src.x, src.y, tex).setDepth(4000);
+    const sy = src === this.p ? src.y - 34 : src.y; // đạn xuất phát từ ngực nhân vật
+    const dir = tgt ? new Phaser.Math.Vector2(tgt.x - src.x, tgt.y - sy).normalize() : this.face.clone();
+    const pr = this.projs.create(src.x, sy, tex).setDepth(4000).setRotation(Math.atan2(dir.y, dir.x));
+    if (tex !== 'arrow') pr.setBlendMode(Phaser.BlendModes.ADD);
     pr.body.setAllowGravity(false);
     pr.setVelocity(dir.x * speed, dir.y * speed);
     Object.assign(pr, { mult, pierce, hit: new Set(), life: 1.3 });
@@ -522,9 +559,8 @@ class GameScene extends Phaser.Scene {
 
     // Auto: tự tiến lại gần mục tiêu khi người chơi không điều khiển
     const autoTarget = this.auto ? (this.target || this.nearestEnemy(420)) : null;
-    if (this.auto && v.lengthSq() < 0.01 && autoTarget && dist(this.p, autoTarget) > s.range * 0.8) {
-      v.set(autoTarget.x - this.p.x, autoTarget.y - this.p.y).normalize();
-    }
+    this.navT -= dt;
+    if (this.auto && v.lengthSq() < 0.01 && autoTarget && dist(this.p, autoTarget) > s.range * 0.8) v.copy(this.steerAuto(autoTarget)); // vòng qua vật cản
     if (v.lengthSq() > 0.01) this.face.copy(v).normalize();
 
     // Né (lướt + miễn sát thương ngắn)
@@ -532,15 +568,21 @@ class GameScene extends Phaser.Scene {
       s.dashT = 0.18; s.iframes = 0.3; s.dodgeCd = 1.2;
     }
     once.dodge = false;
-    if (s.dashT > 0) this.p.setVelocity(this.face.x * 440, this.face.y * 440);
-    else { const mv = s.freezeT > 0 ? 0 : s.slowT > 0 ? 0.6 : 1; this.p.setVelocity(v.x * s.speed * mv, v.y * s.speed * mv); }
+    if (s.dashT > 0) this.vel.set(this.face.x * 440, this.face.y * 440);
+    else { // tăng/giảm tốc mềm thay vì đổi vận tốc tức thì; đang ra đòn thì chậm lại một chút
+      const mv = (s.freezeT > 0 ? 0 : s.slowT > 0 ? 0.6 : 1) * (this.anim.atk ? 0.75 : 1);
+      this.vel.lerp(new Phaser.Math.Vector2(v.x * s.speed * mv, v.y * s.speed * mv), Math.min(1, dt * 14));
+    }
+    this.p.setVelocity(this.vel.x, this.vel.y);
 
     // Tấn công
     const manual = k.J.isDown || TOUCH.atk;
     const t = this.target || (manual || this.auto ? this.nearestEnemy(s.range) : null);
     const inRange = t && dist(this.p, t) <= s.range;
     if (s.atkCd <= 0 && (inRange && (this.target || manual || this.auto) || (manual && !t))) {
-      if (s.melee) this.meleeHit(s.basicMult, 60); else this.fire('bolt', s.basicMult, 420, false, inRange ? t : null);
+      this.startAtk('atk', inRange ? t.x - this.p.x : this.face.x);
+      const tg = inRange ? t : null; // đòn đánh bung ra giữa chừng hoạt ảnh cho khớp tư thế
+      this.time.delayedCall(100, () => { if (this.playerDead) return; if (s.melee) this.meleeHit(s.basicMult, 60); else this.fire(CFG.classId === 'elf' ? 'arrow' : 'bolt', s.basicMult, 420, false, tg); });
       s.atkCd = 0.6;
     }
     // Kỹ năng
@@ -549,7 +591,8 @@ class GameScene extends Phaser.Scene {
       (this.auto && s.skillCd <= 0 && inRange && !(t && t.d.boss && false));
     once.skill = false;
     if (wantSkill && s.skillCd <= 0) {
-      this.castSkill(sk, inRange ? t : null);
+      this.startAtk('skl', inRange ? t.x - this.p.x : this.face.x);
+      const tg2 = inRange ? t : null; this.time.delayedCall(140, () => { if (!this.playerDead) this.castSkill(sk, tg2); });
       s.skillCd = sk.cooldown * (1 - s.cdr / 100);
     }
   }
@@ -588,11 +631,8 @@ class GameScene extends Phaser.Scene {
     s.atkCd -= dt; s.skillCd -= dt; s.dodgeCd -= dt; s.iframes -= dt; s.dashT -= dt;
     s.slowT = (s.slowT || 0) - dt; s.freezeT = (s.freezeT || 0) - dt;
     this.gfx.clear();
-    if (!this.playerDead) this.updatePlayer(dt); else this.p.setVelocity(0, 0);
-    this.p.setDepth(10 + this.p.y);
-    this.p.setAlpha(this.playerDead ? 0.4 : (s.iframes > 0 ? 0.6 : 1));
-    const chill = s.freezeT > 0 || s.slowT > 0;
-    if (chill !== this.chilled) { this.chilled = chill; if (chill) this.p.setTint(0x9fd8ff); else this.p.clearTint(); }
+    if (!this.playerDead) this.updatePlayer(dt); else { this.p.setVelocity(0, 0); this.vel.set(0, 0); }
+    this.updateChar(dt);
     this.enemies.getChildren().slice().forEach(e => this.updateEnemy(e, dt));
     this.projs.getChildren().slice().forEach(pr => { pr.life -= dt; if (pr.life <= 0) pr.destroy(); });
     this.updateTelegraphs(dt);
