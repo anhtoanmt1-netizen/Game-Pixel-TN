@@ -4,8 +4,9 @@ from scipy import ndimage as ndi
 from skimage.color import rgb2hsv, hsv2rgb
 EX='/tmp/ex/'; OUT='/home/claude/ETERNAL-PIXEL/assets/'
 comps=json.load(open(EX+'comps.json'))
+EXD={'tA':'/tmp/nt/tA/','tB':'/tmp/nt/tB/','tT':'/tmp/nt/tT/'}
 def load(src,i):
-    im=Image.open(f'{EX}{src}/{i:03d}.png').convert('RGBA'); a=np.array(im)
+    im=Image.open(f'{EXD.get(src,EX+src+"/")}{i:03d}.png').convert('RGBA'); a=np.array(im)
     m=ndi.binary_erosion(a[...,3]>0,iterations=1)            # bỏ viền trắng do JPEG/khử nền
     a[...,3]=np.where(m,255,0); ys,xs=np.where(m)
     return Image.fromarray(a[ys.min():ys.max()+1,xs.min():xs.max()+1])
@@ -47,12 +48,15 @@ SMALL_ISO=[43,46,48,56,57,47,49,51,52,54]
 FLOW=[36,37,38,40,42,43,44,45,47,48,49]; TUFT=[93,94,95,28,29,61,62,63,104]; LEAF=[90,91,92,102]; PEBBLE=[101,105,107,10]
 BONES=[79,88,89,87]
 def R(*xs): return [(s,i) for s,l in xs for i in l]
+NEW=dict(cliff=R(('tA',[31,32,36,38,39,40,42]),('tB',[9,10,11,12])),rockc=R(('tA',[43,44,48,49,50]),('tB',[13,14,15,25])),
+         pondp=R(('tB',[17,18])),fence=R(('tB',[21])),tuft=R(('tT',range(6))))
+BUSH=R(('tA',[45]),('nature',[30,31,32,33]))
 SPEC={
- 'forest':dict(tree=R(('iso',[0,2,6,9,10,7,1,4]),('nature',[24])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,4,6])),log=R(('logs',[0,3,6])),stump=R(('iso',[37])),bush=R(('nature',[30,31,32,33])),deco=R(('nature',FLOW)),mush=R(('mush',mush[:20])),pool=R(('nature',[58,60,53])),crystal=[]),
- 'cave':dict(tree=[],rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,3,4,6,8])),log=[],stump=[],bush=[],deco=R(('nature',[87,88,79])),mush=R(('mush',mush[:24])),pool=R(('nature',[58,60])),crystal=R(('nature',[77,78,80,82,84]))),
- 'volcano':dict(tree=R(('nature',[26,26,26,56])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[5,7,8,9])),log=[],stump=[],bush=[],deco=R(('nature',[87,88,79,85])),mush=[],pool=R(('nature',[58,60,53])),crystal=R(('nature',[80,82]))),
- 'ice':dict(tree=R(('iso',[1,5,0,2,6]),('nature',[24])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,4,6])),log=[],stump=R(('iso',[37])),bush=R(('nature',[31,32])),deco=[],mush=R(('mush',mush[:8])),pool=R(('nature',[58,60,53])),crystal=R(('nature',[84,77]))),
- 'dark':dict(tree=R(('nature',[26,26,56]),('iso',[4,5,9])),rock=R(('iso',[30,31,32,33,34,35,36]),('nature',[1,2,3,6])),log=[],stump=[],bush=[],deco=R(('nature',[87,88,79])),mush=R(('mush',mush[:24]),('nature',[68])),pool=R(('nature',[58,60])),crystal=R(('nature',[77,78]))),
+ 'forest':dict(tree=R(('iso',[0,2,6,9,10,7,1,4]),('nature',[24])),bush=BUSH,deco=R(('nature',FLOW)),mush=R(('mush',mush[:14])),crystal=[],bridge=R(('tB',[20,100])),**NEW),
+ 'cave':dict(tree=[],bush=[],deco=R(('nature',[87,88,79])),mush=R(('mush',mush[:24])),crystal=R(('nature',[77,78,80,82,84])),bridge=[],**NEW),
+ 'volcano':dict(tree=R(('nature',[26,26,26,56])),bush=[],deco=R(('nature',[87,88,79,85])),mush=[],crystal=R(('nature',[80,82])),bridge=[],**NEW),
+ 'ice':dict(tree=R(('iso',[1,5,0,2,6]),('nature',[24])),bush=R(('tA',[45])),deco=[],mush=R(('mush',mush[:8])),crystal=R(('nature',[84,77])),bridge=R(('tB',[20,100])),**NEW),
+ 'dark':dict(tree=R(('nature',[26,26,56]),('iso',[4,5,9])),bush=[],deco=R(('nature',[87,88,79])),mush=R(('mush',mush[:24]),('nature',[68])),crystal=R(('nature',[77,78])),bridge=[],**NEW),
 }
 HEIGHT={'tree':104,'bush':None,'deco':None}
 SCALE={'iso_rock':.72,'iso_bush':.6,'logw':64,'tree_h':104}
@@ -62,9 +66,17 @@ def strip_base(im):
     a[...,3]=np.where(kill,0,a[...,3]); al=a[...,3]>0; lab,n=ndi.label(al); sizes=ndi.sum(al,lab,range(1,n+1))
     keep=np.isin(lab,[i+1 for i,s_ in enumerate(sizes) if s_>=0.04*al.sum()]); a[...,3]=np.where(keep,a[...,3],0)
     ys,xs=np.where(a[...,3]>0); return Image.fromarray(a[ys.min():ys.max()+1,xs.min():xs.max()+1])
+NEWCAT={'cliff','rockc','pondp','bridge','fence','tuft'}
+def prep_new(theme,cat,src,im):
+    im=fit(im,s={'cliff':.8,'rockc':.8,'pondp':.9,'bridge':.85,'fence':.8,'tuft':1.0}[cat])
+    fx=FX[theme]
+    for key in {'cliff':('plant','rock'),'rockc':('plant','rock'),'pondp':('pool',),'tuft':('plant',),'bridge':(),'fence':()}[cat]:
+        f=fx.get(key,{}); im=grade(im,**f) if f else im
+    return im
 def prep(theme,cat,src,i):
     im=load(src,i)
     if src=='iso' and cat in ('tree','rock','stump'): im=strip_base(im)
+    if cat in NEWCAT: return prep_new(theme,cat,src,im)
     if cat=='tree': im=fit(im,h=104 if src=='iso' else 100) if src=='iso' else fit(im,h=96 if im.height<80 else 80)
     elif cat=='rock': im=fit(im,s=.72 if src=='iso' else 1.0)
     elif cat=='log': im=fit(im,w=64)
@@ -113,9 +125,9 @@ def pack(frames,theme):
 THEMES={}
 for th in SPEC:
     frames={}; meta={}
-    for cat in ['tree','rock','log','stump','bush','deco','mush','pool','crystal']:
+    for cat in ['tree','bush','deco','mush','crystal','cliff','rockc','pondp','bridge','fence','tuft']:
         names=[]
-        for k,(src,i) in enumerate(SPEC[th][cat]):
+        for k,(src,i) in enumerate(SPEC[th].get(cat,[])):
             im=prep(th,cat,src,i); n=f'{cat}_{k}'; frames[n]=im; names.append([n,im.width,im.height])
         meta[cat]=names
     THEMES[th]=meta; print(th,len(frames),pack(frames,th),{c:len(v) for c,v in meta.items()})

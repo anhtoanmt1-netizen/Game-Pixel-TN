@@ -38,7 +38,7 @@ export function initHud(stage, h) {
     setMap(m) { // m: {W,H,theme,blocks,portals,checkpoints}
       const c = document.createElement('canvas'); c.width = 214; c.height = 140; const x = c.getContext('2d'), sx = 214 / m.W, sy = 140 / m.H;
       x.fillStyle = THEME_BG[m.theme] || '#333'; x.fillRect(0, 0, 214, 140);
-      x.fillStyle = 'rgba(0,0,0,.45)'; m.blocks.forEach(b => { if (b.w < m.W * .5) x.fillRect((b.x - b.w / 2) * sx, (b.y - b.h / 2) * sy, Math.max(1, b.w * sx), Math.max(1, b.h * sy)); });
+      m.blocks.forEach(b => { if (b.w < m.W * .5) { x.fillStyle = b.water ? 'rgba(70,160,230,.95)' : 'rgba(0,0,0,.45)'; x.fillRect((b.x - b.w / 2) * sx, (b.y - b.h / 2) * sy, Math.max(1, b.w * sx), Math.max(1, b.h * sy)); } });
       x.fillStyle = '#6ee7ff'; m.checkpoints.forEach(p => x.fillRect(p.x * sx - 2, p.y * sy - 2, 4, 4));
       x.fillStyle = '#c07aff'; m.portals.forEach(p => { x.beginPath(); x.arc(p.x * sx, p.y * sy, 3.5, 0, 7); x.fill(); });
       staticMap = { c, W: m.W, H: m.H };

@@ -170,7 +170,7 @@ AREAS.rift = { name: 'Khe Nứt Tinh Anh', mode: 'rift', tile: 'void', obst: 'vo
 AREAS.daily = { name: 'Phụ Bản Hàng Ngày', mode: 'daily', tile: 'ice', obst: 'iceobs', need: 'q2', checkpoints: mid, spawns: [], portal: back };
 
 // ---- Bản đồ lớn hơn một chút (khớp lưới ô 48px), quái thường nhân đôi, hồi sinh nhanh hơn
-CFG.world.w = 3072; CFG.world.h = 2016; // bản đồ rộng hơn (64×42 ô 48px)
+CFG.world.w = 3072; CFG.world.h = 2048; // bản đồ rộng hơn (64×42 ô 48px)
 const KS = 1.68, seen = new Set(); // nhân tọa độ; bỏ qua đối tượng dùng chung giữa các khu vực
 const sc = o => { if (!o || seen.has(o)) return; seen.add(o); o.x = Math.round(o.x * KS); o.y = Math.round(o.y * KS); };
 for (const a of Object.values(AREAS)) {

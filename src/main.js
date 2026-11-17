@@ -11,7 +11,8 @@ import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
 import { CHARS, CELL, FEET } from './chars.js';
 import { frameFor } from './charanim.js';
-import { buildMap, AREA_THEME } from './maps.js';
+import { buildMap, AREA_THEME, TEX_NAMES } from './maps.js';
+import { stepSway } from './wind.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
 const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }, pet: null, look: null, petLv: {} }, await load() || {});
@@ -36,6 +37,7 @@ class GameScene extends Phaser.Scene {
   preload() { // chỉ nạp atlas của chủ đề màu khu vực hiện tại
     const t = AREA_THEME[AREA_ID];
     this.load.atlas('th_' + t, `assets/${t}.png`, `assets/${t}.json`);
+    TEX_NAMES.forEach(n => this.load.image(`tr_${t}_${n}`, `assets/terrain/${t}_${n}.jpg`)); // texture địa hình liền mạch
     const c = CFG.classId; this.load.atlas('ch_' + c, `assets/chars/${c}.png`, `assets/chars/${c}.json`); // sprite nhân vật
   }
 
@@ -88,7 +90,7 @@ class GameScene extends Phaser.Scene {
 
     // Bản đồ: nền gạch 48px, đường mòn, ao hồ, cây/đá/cảnh vật theo chủ đề màu của khu vực
     const built = buildMap(this, AREA_ID, AREA, W, H);
-    this.trees = built.group;
+    this.trees = built.group; this.sways = built.sways; // cỏ, hoa, bụi lay động
     this.nav = buildNav(built.layout.blocks, W, H); this.navT = 0; this.path = null; this.pi = 0;
 
     // Người chơi
@@ -391,6 +393,12 @@ class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(w.x - p.x, w.y - p.y).normalize();
   }
 
+  updateSway(t, dt) { // cỏ lay theo gió; rung và nghiêng ra khi nhân vật / quái đi qua
+    const v = this.cameras.main.worldView, actors = [this.p];
+    this.enemies.getChildren().forEach(e => { if (e.active && !e.dead) actors.push(e); });
+    for (const s of this.sways) { if (s.x < v.x - 60 || s.x > v.right + 60 || s.y < v.y - 40 || s.y > v.bottom + 120) continue; s.im.setRotation(stepSway(s, t, dt, actors)); }
+  }
+
   startAtk(kind, aimX) { this.anim.atk = { kind, t: 0, dur: kind === 'atk' ? 0.28 : 0.42 }; this.anim.aim = aimX; }
 
   updateChar(dt) { // chọn khung hình, nhún/lắc, bóng đổ, nhấp nháy khi né / bị đánh
@@ -632,7 +640,7 @@ class GameScene extends Phaser.Scene {
     s.slowT = (s.slowT || 0) - dt; s.freezeT = (s.freezeT || 0) - dt;
     this.gfx.clear();
     if (!this.playerDead) this.updatePlayer(dt); else { this.p.setVelocity(0, 0); this.vel.set(0, 0); }
-    this.updateChar(dt);
+    this.updateChar(dt); this.updateSway(time / 1000, dt);
     this.enemies.getChildren().slice().forEach(e => this.updateEnemy(e, dt));
     this.projs.getChildren().slice().forEach(pr => { pr.life -= dt; if (pr.life <= 0) pr.destroy(); });
     this.updateTelegraphs(dt);

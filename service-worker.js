@@ -1,10 +1,10 @@
 // Cache-first, cập nhật nền (cũng lưu font Montserrat sau lần tải đầu để chơi offline). Đổi V mỗi lần phát hành.
-const V = 'eternal-pixel-v15';
+const V = 'eternal-pixel-v16';
 const CORE = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
-  ...['main', 'data', 'items', 'board', 'hud', 'inv', 'layout', 'save', 'combat', 'touch', 'audio', 'sprites', 'maps', 'themes', 'nav', 'charanim', 'chars'].map(n => `src/${n}.js`),
+  ...['main', 'data', 'items', 'board', 'hud', 'inv', 'layout', 'save', 'combat', 'touch', 'audio', 'sprites', 'maps', 'themes', 'nav', 'charanim', 'chars', 'wind'].map(n => `src/${n}.js`),
   ...['board.jpg', 'icons.png', 'plate_big.png', 'plate_small.png', 'hud_icons.png'].map(n => `assets/ui/${n}`),
   ...['mage', 'knight', 'elf', 'rogue'].flatMap(c => [`assets/chars/${c}.png`, `assets/chars/${c}.json`, `assets/chars/${c}_portrait.png`]),
-  ...['forest', 'cave', 'volcano', 'ice', 'dark'].flatMap(t => [`assets/${t}.png`, `assets/${t}.json`]),
+  ...['forest', 'cave', 'volcano', 'ice', 'dark'].flatMap(t => [`assets/${t}.png`, `assets/${t}.json`, ...['grass', 'dirt', 'sand', 'stone', 'water', 'shallow', 'meadow'].map(n => `assets/terrain/${t}_${n}.jpg`)]),
   'https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js'];
 self.addEventListener('install', e => e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(

@@ -5,7 +5,8 @@ import * as I from '../src/items.js';
 import { CFG, CLASSES, MONSTERS, AREAS, QUESTS } from '../src/data.js';
 import { valid } from '../src/save.js';
 import { MAPS, DEFS, CLASS_PAL } from '../src/sprites.js';
-import { generateLayout, AREA_THEME, paintGround, GROUND_S } from '../src/maps.js';
+import { generateLayout, AREA_THEME, paintGround, GROUND_S, TCELL, T as TT, TEX_NAMES } from '../src/maps.js';
+import { stepSway } from '../src/wind.js';
 import { THEMES, CELL } from '../src/themes.js';
 import fs from 'node:fs';
 import { buildNav, findPath, los } from '../src/nav.js';
@@ -163,17 +164,39 @@ test('mọi khu vực có chủ đề màu và atlas tồn tại, đủ frame', 
   const fr = JSON.parse(fs.readFileSync(new URL(`../assets/${th}.json`, import.meta.url))).frames;
   Object.values(THEMES[th]).flat().forEach(([n]) => assert.ok(fr[n], `${th}:${n}`));
 }));
-test('bố cục bản đồ xác định, nền mịn vẽ ra đúng kích thước và màu hợp lệ', () => {
+const flat = c => ({ w: 4, h: 4, data: Uint8ClampedArray.from({ length: 64 }, (_, i) => i % 4 === 3 ? 255 : c[i % 4]) });
+const FLAT = { grass: flat([60, 160, 40]), dirt: flat([200, 160, 100]), sand: flat([230, 210, 140]), stone: flat([130, 130, 130]), water: flat([30, 100, 220]), shallow: flat([100, 220, 220]), meadow: flat([70, 170, 60]) };
+test('bố cục xác định; nền hòa trộn đúng loại địa hình (nước xanh, đường mòn là đất)', () => {
   const a = generateLayout('forest', AREAS.forest, W, H), b = generateLayout('forest', AREAS.forest, W, H);
-  assert.deepEqual(a.props, b.props); assert.equal(a.path.length, a.cols * a.rows);
-  const g = paintGround(a, W, H), g2 = paintGround(b, W, H); assert.equal(g.w, Math.ceil(W / GROUND_S)); assert.equal(g.data.length, g.w * g.h * 4);
+  assert.deepEqual(a.props, b.props); assert.deepEqual(Array.from(a.ter), Array.from(b.ter)); assert.equal(a.ter.length, a.cols * a.rows);
+  const g = paintGround(a, W, H, FLAT), g2 = paintGround(b, W, H, FLAT); assert.equal(g.w, Math.ceil(W / GROUND_S)); assert.equal(g.data.length, g.w * g.h * 4);
   assert.deepEqual(Array.from(g.data.slice(0, 400)), Array.from(g2.data.slice(0, 400)));
-  let mn = 255, mxx = 0; for (let i = 0; i < g.data.length; i += 4 * 97) { mn = Math.min(mn, g.data[i], g.data[i + 1], g.data[i + 2]); mxx = Math.max(mxx, g.data[i], g.data[i + 1], g.data[i + 2]); } assert.ok(mn > 40 && mxx < 250);
+  const px = (i) => { const x = Math.round(((i % a.cols) + 0.5) * TCELL / GROUND_S), y = Math.round((((i / a.cols) | 0) + 0.5) * TCELL / GROUND_S), o = (y * g.w + x) * 4; return [g.data[o], g.data[o + 1], g.data[o + 2]]; };
+  const wi = Array.from(a.ter).findIndex((v, i) => v === TT.WATER && [1, -1, a.cols, -a.cols].every(d => a.ter[i + d] === TT.WATER)); assert.ok(wi >= 0, 'có hồ');
+  const [r1, , b1] = px(wi); assert.ok(b1 > r1 + 80, 'nước phải xanh');
+  const di = Array.from(a.ter).findIndex((v, i) => v === TT.DIRT && a.ter[i + 1] === TT.DIRT && a.ter[i - 1] === TT.DIRT && a.ter[i + a.cols] === TT.DIRT && a.ter[i - a.cols] === TT.DIRT); assert.ok(di >= 0, 'có đường mòn'); const [r2, , b2] = px(di); assert.ok(r2 > b2 + 50, 'đường mòn là đất');
 });
-test('bản đồ gọn: ít vật thể, không dồn cụm quá dày', () => Object.keys(AREAS).forEach(id => {
-  const L = generateLayout(id, AREAS[id], W, H); assert.ok(L.props.length <= 330, `${id}: ${L.props.length} vật thể`);
-  const flat = L.props.filter(p => p.cat === 'deco').length; assert.ok(flat <= 100, `${id}: ${flat} deco`);
+test('địa hình: hồ có nước nông viền quanh và mọi ô nước đều bị chặn; cỏ chỉ mọc trên đất cỏ', () => {
+  const L = generateLayout('forest', AREAS.forest, W, H);
+  let nWater = 0; L.ter.forEach((v, i) => {
+    const x = ((i % L.cols) + 0.5) * TCELL, y = (((i / L.cols) | 0) + 0.5) * TCELL;
+    if (v === TT.WATER) { nWater++; assert.ok(L.blocks.some(b => b.water && Math.abs(b.x - x) <= b.w / 2 && Math.abs(b.y - y) <= b.h / 2), 'nước phải bị chặn'); const cx = i % L.cols, cy = (i / L.cols) | 0; if (cx > 0 && cy > 0 && cx < L.cols - 1 && cy < L.rows - 1) [1, -1, L.cols, -L.cols].forEach(d => assert.ok(L.ter[i + d] === TT.WATER || L.ter[i + d] === TT.SHALLOW, 'viền nước nông')); }
+  }); assert.ok(nWater > 20);
+  L.props.filter(p => p.cat === 'tuft').forEach(p => { const v = L.ter[Math.floor(p.y / TCELL) * L.cols + Math.floor(p.x / TCELL)]; assert.ok(v === TT.GRASS || v === TT.MEADOW, 'bụi cỏ trên ô ' + v); });
+  Object.keys(AREAS).forEach(id => { const l = generateLayout(id, AREAS[id], W, H); l.keep.forEach(k => assert.notEqual(l.ter[Math.floor(k.y / TCELL) * l.cols + Math.floor(k.x / TCELL)], TT.WATER, id + ': nước phủ lên điểm quan trọng')); });
+});
+test('bản đồ gọn: ít vật thể, bố cục theo cụm, đủ bụi cỏ để lay động', () => Object.keys(AREAS).forEach(id => {
+  const L = generateLayout(id, AREAS[id], W, H), solid = L.props.filter(p => p.cat !== 'tuft'); assert.ok(solid.length <= 300, `${id}: ${solid.length} vật thể`);
+  assert.ok(L.props.filter(p => p.cat === 'deco').length <= 100); assert.ok(L.props.filter(p => p.cat === 'tuft').length <= 1100);
 }));
+test('texture địa hình đủ cho mọi chủ đề', () => { for (const th of ['forest', 'cave', 'volcano', 'ice', 'dark']) for (const n of TEX_NAMES) assert.ok(fs.existsSync(new URL(`../assets/terrain/${th}_${n}.jpg`, import.meta.url)), `${th}_${n}`); });
+test('cỏ lay: gió làm lay nhẹ; người đi qua đẩy nghiêng ra xa rồi hồi lại', () => {
+  const s = { x: 100, y: 100, amp: 0.13, ph: 1, ang: 0, vel: 0 }; let mx = 0;
+  for (let i = 0; i < 600; i++) { stepSway(s, i / 60, 1 / 60, []); mx = Math.max(mx, Math.abs(s.ang)); } assert.ok(mx > 0.02 && mx < 0.2, 'gió ' + mx);
+  const r = { x: 100, y: 100, amp: 0.13, ph: 0, ang: 0, vel: 0 }; for (let i = 0; i < 20; i++) stepSway(r, 0, 1 / 60, [{ x: 80, y: 100 }]); assert.ok(r.ang > 0.1, 'bị đẩy sang phải khi người ở bên trái ' + r.ang);
+  for (let i = 0; i < 300; i++) stepSway(r, 5 + i / 60, 1 / 60, []); assert.ok(Math.abs(r.ang) < 0.2, 'hồi lại');
+  const far = { x: 100, y: 100, amp: 0.13, ph: 0, ang: 0, vel: 0 }; for (let i = 0; i < 20; i++) stepSway(far, 0, 1 / 60, [{ x: 400, y: 400 }]); assert.ok(Math.abs(far.ang) < 0.1, 'ở xa không bị đẩy');
+});
 test('mọi bản đồ: vật cản không đè điểm cần chừa; người chơi đi được từ điểm xuất phát tới mọi cổng, checkpoint, chỗ quái', () => {
   Object.keys(AREAS).forEach(id => {
     const L = generateLayout(id, AREAS[id], W, H), R = 11, G = 24, gw = Math.ceil(W / G), gh = Math.ceil(H / G);
