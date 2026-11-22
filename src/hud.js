@@ -1,4 +1,5 @@
 // HUD trên màn chơi: thanh HP/EXP, thông tin, boss, thông báo, bản đồ nhỏ, nút nhanh, hồi chiêu. Toàn bộ là DOM trong khung 16:9.
+import { fmt2 } from './items.js';
 const THEME_BG = { forest: '#2f5a2a', cave: '#393c47', volcano: '#4a2a1c', ice: '#c9dce8', dark: '#241a36' };
 export function initHud(stage, h) {
   const css = document.createElement('style');
@@ -15,8 +16,10 @@ export function initHud(stage, h) {
   #boss{position:absolute;left:33%;top:2%;width:34%;height:3.4%;background:#0c0a08cc;border:.15em solid #8b6a35;border-radius:.4em;display:none;overflow:hidden}
   #boss i{display:block;height:100%;background:linear-gradient(90deg,#8a1a1a,#e14646)}#boss span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8em;text-shadow:0 0 .3em #000}
   #toast{position:absolute;left:50%;top:9.5%;transform:translateX(-50%);font-weight:800;font-size:1.35em;text-shadow:0 0 .4em #000,0 0 .4em #000;opacity:0;transition:opacity .4s;white-space:nowrap;color:#ffe9b0}
-  #mini{position:absolute;right:.9%;top:1.4%;width:16.5%;aspect-ratio:214/140;border:.18em solid #8b6a35;border-radius:.4em;background:#000;box-shadow:0 0 .8em #000}
-  #hbtns{position:absolute;right:.9%;top:22%;display:flex;gap:.5em;pointer-events:auto}
+  #mapname{position:absolute;right:.9%;top:1.2%;width:16.5%;height:3.6%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:.5em;padding:0 .7em;background:linear-gradient(180deg,#2a2218e6,#15110cf0);border:.15em solid #8b6a35;border-radius:.4em;box-shadow:0 0 .6em #000;white-space:nowrap;overflow:hidden}
+  #mapname b{font-weight:800;font-size:.95em;color:#f1d9a0;text-shadow:0 0 .3em #000;overflow:hidden;text-overflow:ellipsis}#mapname small{font-weight:600;font-size:.72em;color:#bda77a}
+  #mini{position:absolute;right:.9%;top:5.4%;width:16.5%;aspect-ratio:214/140;border:.18em solid #8b6a35;border-radius:.4em;background:#000;box-shadow:0 0 .8em #000}
+  #hbtns{position:absolute;right:.9%;top:25.4%;display:flex;gap:.5em;pointer-events:auto}
   #hbtns button{width:calc(var(--u,10)*3.3px);height:calc(var(--u,10)*3.3px);border:0;background:url(assets/ui/hud_icons.png) no-repeat;background-size:700% 100%;cursor:pointer;filter:drop-shadow(0 0 .3em #000);padding:0;border-radius:.4em}
   #hbtns button:hover{filter:brightness(1.35) drop-shadow(0 0 .5em #ffb44a)}#hbtns button.on{outline:.15em solid #ffb44a}
   #cds{position:absolute;left:50%;bottom:2.2%;transform:translateX(-50%);display:flex;gap:1em}
@@ -25,14 +28,18 @@ export function initHud(stage, h) {
   #help{position:absolute;left:.9%;bottom:1.2%;font-size:.62em;opacity:.75;text-shadow:0 0 .3em #000}@media (pointer:coarse){#help{display:none}}`;
   document.head.appendChild(css);
   stage.insertAdjacentHTML('beforeend', `<div id="hud"><div id="hl"><div class="pl"><div class="lv"></div><div class="bar"><i></i></div><div class="tx"></div></div><div class="pl s"><div class="bar"><i></i></div><div class="tx"></div></div><div id="hinfo"></div></div>
-   <div id="boss"><i></i><span></span></div><div id="toast"></div><canvas id="mini" width="214" height="140"></canvas>
-   <div id="hbtns"><button data-h="bag" title="Nhân vật & túi đồ (I)" style="background-position:50% 0"></button><button data-h="zoom" title="Tầm nhìn (Z)" style="background-position:100% 0"></button><button data-h="auto" title="Auto battle (Q)" style="background-position:0 0"></button><button data-h="set" title="Cài đặt" style="background-position:83.33% 0"></button></div>
+   <div id="boss"><i></i><span></span></div><div id="toast"></div><div id="mapname"><b></b><small></small></div><canvas id="mini" width="214" height="140"></canvas>
+   <div id="hbtns"><button data-h="bag" title="Nhân vật & túi đồ (I)" style="background-position:50% 0"></button><button data-h="zoom" title="Tầm nhìn (Z)" style="background-position:100% 0"></button><button data-h="auto" title="Auto battle (Q) · giữ để cài đặt (R)" style="background-position:0 0"></button><button data-h="set" title="Cài đặt" style="background-position:83.33% 0"></button></div>
    <div id="cds"><div id="cdk"><b></b><span>1</span></div><div id="cdd"><b></b><span>␣</span></div></div><div id="help">WASD đi · J/click đánh · 1 kỹ năng · Space né · Tab khóa · Q auto · Z tầm nhìn · M bản đồ nhỏ · I túi đồ</div></div>`);
   const $ = s => stage.querySelector(s);
   const hp = $('.pl:not(.s)'), xp = $('.pl.s'), mini = $('#mini'), mc = mini.getContext('2d'), toast = $('#toast');
   let staticMap = null, tt = null, last = {};
   const set = (el, k, v, fn) => { if (last[k] !== v) { last[k] = v; fn(el, v); } };
-  stage.querySelector('#hbtns').addEventListener('click', e => { const b = e.target.closest('button'); if (b && h[b.dataset.h]) h[b.dataset.h](); });
+  const bar = stage.querySelector('#hbtns'); let lpT = null, lpFired = false;
+  bar.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.h !== 'auto' && h[b.dataset.h]) h[b.dataset.h](); });
+  bar.addEventListener('pointerdown', e => { const b = e.target.closest('button'); if (!b || b.dataset.h !== 'auto') return; lpFired = false; lpT = setTimeout(() => { lpFired = true; if (h.autoCfg) h.autoCfg(); }, 450); }); // giữ nút Auto: mở cài đặt
+  bar.addEventListener('pointerup', e => { const b = e.target.closest('button'); if (b && b.dataset.h === 'auto') { clearTimeout(lpT); if (!lpFired && h.auto) h.auto(); } });
+  ['pointerleave', 'pointercancel'].forEach(ev => bar.addEventListener(ev, () => clearTimeout(lpT)));
   return {
     msg(t) { toast.textContent = t; toast.style.opacity = 1; clearTimeout(tt); tt = setTimeout(() => { toast.style.opacity = 0; }, 1800); },
     setMap(m) { // m: {W,H,theme,blocks,portals,checkpoints}
@@ -48,8 +55,10 @@ export function initHud(stage, h) {
       hp.querySelector('.bar i').style.width = Math.max(0, s.hp / s.maxHp * 100) + '%';
       set(hp.querySelector('.tx'), 'hp', Math.ceil(s.hp) + '/' + Math.round(s.maxHp), (e, v) => { e.textContent = v; });
       xp.querySelector('.bar i').style.width = s.xpPct + '%';
-      set(xp.querySelector('.tx'), 'xp', 'EXP ' + s.xpPct.toFixed(1) + '%', (e, v) => { e.textContent = v; });
+      set(xp.querySelector('.tx'), 'xp', 'EXP ' + fmt2(s.xpPct) + '%', (e, v) => { e.textContent = v; });
       set($('#hinfo'), 'info', s.info, (e, v) => { e.textContent = v; });
+      set($('#mapname b'), 'area', s.area, (e, v) => { e.textContent = v; });
+      set($('#mapname small'), 'pos', `X${Math.round(s.px / 64)} · Y${Math.round(s.py / 64)}`, (e, v) => { e.textContent = v; });
       const b = $('#boss'); b.style.display = s.boss ? 'block' : 'none';
       if (s.boss) { b.querySelector('i').style.width = Math.max(0, s.boss.hp / s.boss.max * 100) + '%'; set(b.querySelector('span'), 'bn', s.boss.name, (e, v) => { e.textContent = v; }); }
       $('#cdk b').style.setProperty('--p', s.cdSkill * 100 + '%'); $('#cdd b').style.setProperty('--p', s.cdDodge * 100 + '%');

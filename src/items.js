@@ -26,7 +26,9 @@ export const BONUS_LABEL = { ...LABEL, skill_dmg: 'ST kỹ năng', cdr: 'Giảm 
 export const TYPE_VN = { beast: 'Thú', insect: 'Côn trùng', fire: 'Lửa', ice: 'Băng', dark: 'Bóng tối' };
 export const KIND_VN = { monster: 'quái', skill: 'kỹ năng', relic: 'di vật' };
 const PCT_TYPES = new Set([...Object.keys(PCT), 'atk_pct', 'hp_pct']);
-export const fmt = a => `+${a.v}${PCT_TYPES.has(a.type) ? '%' : ''} ${LABEL[a.type]}`;
+// Số hiển thị: làm tròn tối đa 2 chữ số thập phân, dấu phẩy thập phân, dấu chấm phân cách nghìn (vd 1,78 · 1.234,5)
+export const fmt2 = n => { const x = Math.round((+n + Number.EPSILON) * 100) / 100, p = String(Math.abs(x)).split('.'); return (x < 0 ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (p[1] ? ',' + p[1] : ''); };
+export const fmt = a => `+${fmt2(a.v)}${PCT_TYPES.has(a.type) ? '%' : ''} ${LABEL[a.type]}`;
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const val = (t, L, m = 1) => FLAT[t] ? Math.round((FLAT[t][0] * L + FLAT[t][1]) * rnd(0.9, 1.1) * m) : +(rnd(...PCT[t]) * m).toFixed(1);
@@ -226,6 +228,6 @@ export function rollAwaken() {
   const ks = Object.keys(AW), type = ks[Math.floor(Math.random() * ks.length)], [, lo, hi] = AW[type];
   return { type, v: +(lo + Math.random() * (hi - lo)).toFixed(1) };
 }
-export const fmtAw = a => `+${a.v}% ${AW[a.type][0]}`;
+export const fmtAw = a => `+${fmt2(a.v)}% ${AW[a.type][0]}`;
 export const TRANS = { gold: 5000, stone: 300, enh: 15 };
 CARDS.r_clover = { name: 'Di vật Cỏ Bốn Lá', kind: 'relic', rarity: 'epic', bonus: { luck: 15 } };

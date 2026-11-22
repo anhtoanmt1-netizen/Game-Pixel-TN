@@ -181,3 +181,13 @@ for (const a of Object.values(AREAS)) {
   a.spawns = [...a.spawns, ...x2, ...x3];
 }
 Object.values(MONSTERS).forEach(m => { m.respawn = Math.max(5, Math.round(m.respawn * 0.4)); }); // 20s → 8s, boss 60s → 24s
+
+// ---- Mức nguy hiểm của bản đồ đích (0 thấp … 5 cao): quyết định màu và độ nổi bật của cổng dịch chuyển ----
+export const DANGER = { hub: 0, forest: 1, daily: 1, cave: 2, tower: 2, ice: 3, volcano: 3, survival: 4, rift: 4, dark: 5, bossrush: 5 };
+
+// ---- Quái theo nhóm: mỗi chỗ quái xuất hiện kéo theo 2–3 con đứng quanh (tổng số quái thường ≈ x3,5 so với trước) ----
+for (const a of Object.values(AREAS)) {
+  const base = a.spawns.filter(s => !MONSTERS[s.id].boss), extra = [], cl = (v, m) => Math.max(160, Math.min(m - 160, v));
+  base.forEach((s, i) => { const n = i % 2 ? 2 : 3; for (let k = 0; k < n; k++) { const ang = (k / n) * Math.PI * 2 + i; extra.push({ id: s.id, x: cl(s.x + Math.cos(ang) * 90, CFG.world.w), y: cl(s.y + Math.sin(ang) * 90, CFG.world.h), clone: true }); } });
+  a.spawns = [...a.spawns, ...extra];
+}

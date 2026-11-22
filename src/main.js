@@ -1,11 +1,11 @@
-import { CFG, CLASSES, SKILLS, MONSTERS, AREAS, QUESTS } from './data.js';
+import { CFG, CLASSES, SKILLS, MONSTERS, AREAS, QUESTS, DANGER } from './data.js';
 import { calcDamage, rollCrit, rollDodge } from './combat.js';
 import { TOUCH } from './touch.js';
 import { lookStage, PETS, ACHS, RARITY, CARDS, derive, expNeed, genItem, rollRarity, addCard } from './items.js';
 import { save, load } from './save.js';
 import { initBoard, pickClass } from './board.js';
 import { initHud } from './hud.js';
-import { itemName } from './inv.js';
+import { itemName, sellValue, iconPos } from './inv.js';
 import { buildNav, findPath, los } from './nav.js';
 import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
@@ -13,12 +13,14 @@ import { CHARS, CELL, FEET } from './chars.js';
 import { frameFor } from './charanim.js';
 import { buildMap, AREA_THEME, TEX_NAMES } from './maps.js';
 import { stepSway } from './wind.js';
+import { normAuto, pickTarget, pickDrop, passesPick, shouldSell, bestSlot } from './auto.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
 const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }, pet: null, look: null, petLv: {} }, await load() || {});
 if (!G.classId) { G.classId = await pickClass(CLASSES); await save(G); }
 CFG.classId = G.classId;
 G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true, ...G.set };
+G.set.auto = normAuto(G.set.auto); // cấu hình Auto (phạm vi, chế độ, nhặt đồ, tự bán, tự trang bị)
 const AREA = AREAS[G.area] || AREAS.forest;
 const AREA_ID = AREAS[G.area] ? G.area : 'forest';
 const CHECKPOINTS = AREA.checkpoints, SPAWNS = AREA.spawns;
@@ -27,6 +29,8 @@ const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
 
 const scaled = (d, k) => ({ ...d, hp: Math.round(d.hp * k), atk: Math.round(d.atk * k), exp: Math.round(d.exp * k), gold: Math.round(d.gold * k) });
 
+const RUNE = { forest: 0x7fffd0, cave: 0x7fd0ff, volcano: 0xffb050, ice: 0xd8f4ff, dark: 0xd08aff };            // màu rune của bệ triệu hồi theo chủ đề
+const PORTAL_COL = [0xcfe6ff, 0x7be08a, 0x4ad0ff, 0xffc04a, 0xff5a3a, 0xff2a78];                               // màu cổng theo mức nguy hiểm 0→5
 const FLOOR_MODES = ['tower', 'bossrush', 'rift', 'daily'];
 const recKey = m => (m === 'tower' ? 'best' : 'rec_' + m);
 
@@ -38,6 +42,7 @@ class GameScene extends Phaser.Scene {
     const t = AREA_THEME[AREA_ID];
     this.load.atlas('th_' + t, `assets/${t}.png`, `assets/${t}.json`);
     TEX_NAMES.forEach(n => this.load.image(`tr_${t}_${n}`, `assets/terrain/${t}_${n}.jpg`)); // texture địa hình liền mạch
+    this.load.spritesheet('icons', 'assets/ui/icons.png', { frameWidth: 128, frameHeight: 128 }); // icon trang bị cho vật phẩm rơi
     const c = CFG.classId; this.load.atlas('ch_' + c, `assets/chars/${c}.png`, `assets/chars/${c}.json`); // sprite nhân vật
   }
 
@@ -72,6 +77,22 @@ class GameScene extends Phaser.Scene {
     tex('arrow', 26, 7, g => { g.fillStyle(0xe6d29a).fillRect(0, 3, 19, 2); g.fillStyle(0xffffff).fillTriangle(26, 3.5, 18, 0, 18, 7); g.fillStyle(0xa6e08a).fillRect(0, 1, 4, 5); });
     tex('px', 2, 2, g => { g.fillStyle(0xffffff).fillRect(0, 0, 2, 2); }); // khối va chạm vô hình
     g.destroy();
+    // Texture hiệu ứng vẽ bằng canvas: vầng sáng, cột sáng, vòng sóng, hạt sáng, xoáy cổng, bệ đá triệu hồi
+    const ctex = (key, w, h, fn) => { if (this.textures.exists(key)) this.textures.remove(key); const t = this.textures.createCanvas(key, w, h); fn(t.getContext('2d')); t.refresh(); };
+    ctex('glow', 64, 64, c => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,.45)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
+    ctex('beam', 32, 128, c => { const g = c.createLinearGradient(0, 128, 0, 0); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 32, 128); const h = c.createLinearGradient(0, 0, 32, 0); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(0.5, 'rgba(0,0,0,0)'); h.addColorStop(1, 'rgba(0,0,0,1)'); c.globalCompositeOperation = 'destination-out'; c.fillStyle = h; c.fillRect(0, 0, 32, 128); });
+    ctex('ring', 64, 64, c => { c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = 3; c.beginPath(); c.arc(32, 32, 28, 0, 7); c.stroke(); });
+    ctex('spark', 8, 8, c => { const g = c.createRadialGradient(4, 4, 0, 4, 4, 4); g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 8, 8); });
+    ctex('swirl', 256, 256, c => { c.translate(128, 128); c.lineCap = 'round'; for (let arm = 0; arm < 4; arm++) { let px = 0, py = 0; for (let i = 0; i <= 90; i++) { const t = i / 90, a = arm * Math.PI / 2 + t * 5.2, r = 10 + t * 112, x = Math.cos(a) * r, y = Math.sin(a) * r; if (i) { c.strokeStyle = `rgba(255,255,255,${(1 - t * 0.75).toFixed(2)})`; c.lineWidth = 2 + (1 - t) * 11; c.beginPath(); c.moveTo(px, py); c.lineTo(x, y); c.stroke(); } px = x; py = y; } } });
+    const runeCss = '#' + (RUNE[AREA_THEME[AREA_ID]] || 0x7fd0ff).toString(16).padStart(6, '0');
+    ctex('pedestal', 180, 120, c => {
+      const cx = 90, cy = 58; c.fillStyle = '#3b3a42'; c.beginPath(); c.ellipse(cx, cy + 14, 80, 38, 0, 0, 7); c.fill();
+      const gr = c.createLinearGradient(0, cy - 38, 0, cy + 38); gr.addColorStop(0, '#8d8a96'); gr.addColorStop(1, '#5a5864'); c.fillStyle = gr; c.beginPath(); c.ellipse(cx, cy, 80, 38, 0, 0, 7); c.fill(); c.strokeStyle = '#26252c'; c.lineWidth = 3; c.stroke();
+      c.fillStyle = '#4a4853'; c.beginPath(); c.ellipse(cx, cy, 60, 28, 0, 0, 7); c.fill();
+      c.strokeStyle = runeCss; c.fillStyle = runeCss; c.lineWidth = 2.5; c.globalAlpha = 0.9; c.beginPath(); c.ellipse(cx, cy, 50, 23, 0, 0, 7); c.stroke();
+      for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; c.fillRect(cx + Math.cos(a) * 50 - 2, cy + Math.sin(a) * 23 - 2, 4, 4); }
+      c.beginPath(); c.moveTo(cx, cy - 16); c.lineTo(cx + 14, cy + 8); c.lineTo(cx - 14, cy + 8); c.closePath(); c.stroke(); c.globalAlpha = 1;
+    });
     buildSprites(this, CFG.classId); // thay hình khối tạm bằng pixel art (cùng tên texture)
   }
 
@@ -80,13 +101,10 @@ class GameScene extends Phaser.Scene {
     const { w: W, h: H } = CFG.world;
     this.physics.world.setBounds(0, 0, W, H);
 
-    // Điểm hồi sinh
-    CHECKPOINTS.forEach(c => this.add.image(c.x, c.y, 'cp').setDepth(1));
+    // Bệ đá triệu hồi tại các điểm xuất hiện + cổng xoáy (màu và độ lớn theo mức nguy hiểm của bản đồ đích)
+    this.pedestals = CHECKPOINTS.map(c => this.makePedestal(c.x, c.y));
     this.portals = [AREA.portal, AREA.portal2, ...(AREA.extra || [])].filter(Boolean); this.portalT = 0;
-    this.portals.forEach(p => {
-      this.add.image(p.x, p.y, 'portal').setDepth(1);
-      this.add.text(p.x, p.y + 34, AREAS[p.to].name, { fontFamily: 'Montserrat, sans-serif', fontStyle: 'bold', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(2);
-    });
+    this.portals.forEach(p => this.makePortalFx(p));
 
     // Bản đồ: nền gạch 48px, đường mòn, ao hồ, cây/đá/cảnh vật theo chủ đề màu của khu vực
     const built = buildMap(this, AREA_ID, AREA, W, H);
@@ -139,7 +157,7 @@ class GameScene extends Phaser.Scene {
     cam.setBounds(0, 0, W, H).startFollow(this.p, true, 0.1, 0.1);
 
     // Điều khiển
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,J,Q,E,P,Z,M,TAB,ONE,SPACE');
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,J,Q,E,P,R,Z,M,TAB,ONE,SPACE');
     this.cursors = this.input.keyboard.createCursorKeys();
     this.input.on('pointerdown', ptr => {
       if (ptr.event && ptr.event.target && ptr.event.target.closest && ptr.event.target.closest('#touch')) return;
@@ -151,10 +169,11 @@ class GameScene extends Phaser.Scene {
 
     // HUD là DOM trong khung 16:9 (hud.js); ở đây chỉ còn lớp đồ họa nằm trong thế giới
     this.gfx = this.add.graphics().setDepth(5000);
-    this.hudApi = initHud(document.getElementById('stage'), { bag: () => this.board.toggle(), zoom: () => this.cycleZoom(), auto: () => this.toggleAuto(), set: () => this.board.open('equip', 'set') });
+    this.hudApi = initHud(document.getElementById('stage'), { bag: () => this.board.toggle(), zoom: () => this.cycleZoom(), auto: () => this.toggleAuto(), set: () => this.board.open('equip', 'set'), autoCfg: () => this.board.open('equip', 'auto') });
     this.hudApi.setMap({ W, H, theme: AREA_THEME[AREA_ID], blocks: built.layout.blocks, portals: this.portals, checkpoints: CHECKPOINTS });
     this.applyZoom();
     if (this.pendingMsg) this.hudApi.msg(this.pendingMsg);
+    this.playSummon(this.p.x, this.p.y); // vừa vào bản đồ: được triệu hồi lên bệ đá
   }
 
   applyZoom() { this.cameras.main.setZoom({ near: 1.5, wide: 1.0, ultra: 0.7 }[G.set.zoom] || 1.5); } // gần / rộng / siêu rộng
@@ -162,7 +181,7 @@ class GameScene extends Phaser.Scene {
     G.set.zoom = { near: 'wide', wide: 'ultra', ultra: 'near' }[G.set.zoom || 'near'];
     this.msg('Tầm nhìn: ' + { near: 'Gần', wide: 'Rộng', ultra: 'Siêu rộng' }[G.set.zoom]); this.applyZoom(); this.persist();
   }
-  toggleAuto() { this.auto = !this.auto; this.msg(this.auto ? 'Auto Battle: BẬT' : 'Auto Battle: TẮT'); }
+  toggleAuto() { this.auto = !this.auto; if (this.auto) this.autoAnchor = { x: this.p.x, y: this.p.y }; this.msg(this.auto ? 'Auto Battle: BẬT' : 'Auto Battle: TẮT'); }
   travelTo(id) { if (this.traveling) return; this.traveling = true; G.area = id; this.msg('Đang dịch chuyển...'); save(G).then(() => location.reload()); }
 
   msg(t) { if (this.hudApi) this.hudApi.msg(t); else this.pendingMsg = t; }
@@ -190,31 +209,56 @@ class GameScene extends Phaser.Scene {
   }
 
   dropLoot(e) {
-    const boss = e.d.boss, out = [];
-    const rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
-    const n = boss ? 2 : (rift || Math.random() < 0.45 ? 1 : 0);
+    const boss = e.d.boss, out = [], rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
+    const n = boss ? 2 : (rift || Math.random() < 0.35 ? 1 : 0);
     for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), this.ps.luck), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined) });
-    if (Math.random() < (boss ? 1 : 0.1)) out.push({ card: e.id });
+    if (Math.random() < (boss ? 1 : 0.07)) out.push({ card: e.id });
     const extra = Object.keys(CARDS).filter(k => CARDS[k].kind); // thẻ kỹ năng / di vật
-    if (Math.random() < (boss ? 0.6 : 0.04)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });
-    out.forEach(o => {
-      const hex = o.card ? 0x6ee7ff : parseInt(RARITY[o.item.ri].color.slice(1), 16);
-      const d = this.add.rectangle(e.x + Phaser.Math.Between(-24, 24), e.y + Phaser.Math.Between(-24, 24), 12, 12, hex).setStrokeStyle(1, 0xffffff).setDepth(2);
-      Object.assign(d, o, { low: o.card ? false : o.item.ri <= 1 });
-      this.drops.push(d);
-    });
+    if (Math.random() < (boss ? 0.6 : 0.03)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });
+    out.forEach(o => this.makeDrop(o, e.x + Phaser.Math.Between(-26, 26), e.y + Phaser.Math.Between(-20, 20)));
+  }
+
+  makeDrop(o, x, y) { // vật phẩm rơi: vầng sáng + (cột sáng, vòng sóng, hạt sáng) tăng dần theo phẩm chất, màu theo phẩm chất
+    const ri = o.card ? RARITY.findIndex(r => r.id === CARDS[o.card].rarity) : o.item.ri, col = parseInt(RARITY[ri].color.slice(1), 16), A = Phaser.BlendModes.ADD, parts = [], D = 3000;
+    const glow = this.add.image(x, y + 4, 'glow').setTint(col).setBlendMode(A).setDepth(D).setScale(0.6 + ri * 0.11).setAlpha(0.55); parts.push(glow);
+    this.tweens.add({ targets: glow, alpha: { from: 0.32, to: 0.8 }, scale: glow.scale * 1.18, duration: 1000 - ri * 90, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    if (ri >= 3) { // Sử thi trở lên: cột sáng
+      const beam = this.add.image(x, y + 3, 'beam').setOrigin(0.5, 1).setTint(col).setBlendMode(A).setDepth(D).setScale(0.45 + (ri - 3) * 0.1, 0.65 + (ri - 3) * 0.22).setAlpha(0.5); parts.push(beam);
+      this.tweens.add({ targets: beam, alpha: { from: 0.28, to: 0.62 }, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    }
+    if (ri >= 4) { // Huyền thoại trở lên: vòng sóng lan trên mặt đất
+      const ring = this.add.image(x, y + 6, 'ring').setTint(col).setBlendMode(A).setDepth(D).setScale(0.3, 0.14); parts.push(ring);
+      this.tweens.add({ targets: ring, scaleX: 1.0 + (ri - 4) * 0.25, scaleY: 0.45 + (ri - 4) * 0.1, alpha: { from: 0.9, to: 0 }, duration: 1500, repeat: -1 });
+    }
+    if (ri >= 5) parts.push(this.add.particles(x, y, 'spark', { tint: col, lifespan: 1000, speedY: { min: -55, max: -25 }, speedX: { min: -14, max: 14 }, scale: { start: 0.8, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: ri === 6 ? 90 : 170, blendMode: 'ADD' }).setDepth(D + 2)); // Thần thoại / Cổ đại: hạt sáng bay lên
+    let icon;
+    if (o.item) { const p = iconPos(o.item, CFG.classId); icon = this.add.image(x, y - 14, 'icons', p.row * 6 + p.col).setScale(0.38).setDepth(D + 1); if (ri === 6) icon.setTint(0xffc08a); }
+    else icon = this.add.rectangle(x, y - 14, 16, 22, 0x101820).setStrokeStyle(2, col).setDepth(D + 1);
+    this.tweens.add({ targets: icon, y: icon.y - 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' }); parts.push(icon);
+    this.drops.push({ x, y, ...o, ri, low: !o.card && ri <= 1, parts });
+  }
+
+  collect(d, autoMode) { // nhặt một vật phẩm; chế độ Auto có thể tự trang bị hoặc tự bán. Trả về false nếu túi đầy
+    const cfg = G.set.auto;
+    if (d.card) { addCard(G, d.card); this.msg(`Nhận thẻ: ${CARDS[d.card].name}`); return true; }
+    const it = d.item;
+    if (autoMode && cfg.equip && G.inv.length < G.cap) {
+      const slot = bestSlot(G, it, CLASSES[CFG.classId], CFG);
+      if (slot) { const old = G.eq[slot]; G.eq[slot] = it; if (old) G.inv.push(old); this.applyStats(); this.msg(`Tự trang bị: ${itemName(it, CFG.classId)}`); return true; }
+    }
+    if (autoMode && shouldSell(cfg, it)) { const v = sellValue(it); G.gold += v; this.msg(`Tự bán ${itemName(it, CFG.classId)}: +${v} vàng`); return true; }
+    if (G.inv.length >= G.cap) { this.msg('Túi đồ đã đầy!'); return false; }
+    G.inv.push(it); this.msg(`Nhặt: ${itemName(it, CFG.classId)}`); return true;
   }
 
   updateDrops() {
-    const k = this.keys, E = Phaser.Input.Keyboard.JustDown(k.E);
+    const k = this.keys, E = Phaser.Input.Keyboard.JustDown(k.E), cfg = G.set.auto;
     if (Phaser.Input.Keyboard.JustDown(k.P)) { this.autoAll = !this.autoAll; this.msg(this.autoAll ? 'Nhặt: tự động mọi đồ' : 'Nhặt: tự động đồ thường, nhấn E cho đồ hiếm'); }
     this.drops = this.drops.filter(d => {
-      if (this.playerDead || (dist(this.p, d) > 40 && !(this.pet && PETS[G.pet].magnet && dist(this.pet, d) < 60))) return true; // thú đồng hành cũng nhặt đồ
-      if (!(this.autoAll || d.low || E)) return true;
-      if (d.card) { addCard(G, d.card); this.msg(`Nhận thẻ: ${CARDS[d.card].name}`); }
-      else if (G.inv.length >= G.cap) { this.msg('Túi đồ đã đầy!'); return true; }
-      else { G.inv.push(d.item); this.msg(`Nhặt: ${itemName(d.item, CFG.classId)}`); }
-      d.destroy(); sfx('pick'); this.board.refresh(); this.persist();
+      if (this.playerDead || (dist(this.p, d) > 44 && !(this.pet && PETS[G.pet].magnet && dist(this.pet, d) < 60))) return true; // thú đồng hành cũng nhặt đồ
+      const ok = E || (this.auto ? passesPick(cfg, d) : (this.autoAll || d.low)); // Auto: theo bộ lọc nhặt; thủ công: theo quy tắc cũ
+      if (!ok || !this.collect(d, this.auto)) return true;
+      d.parts.forEach(pt => pt.destroy()); sfx('pick'); this.board.refresh(); this.persist();
       return false;
     });
   }
@@ -299,7 +343,7 @@ class GameScene extends Phaser.Scene {
         const off = i ? Phaser.Math.Between(-130, 130) : 0;
         this.telegraphs.push({ x: this.p.x + off, y: this.p.y + (i ? Phaser.Math.Between(-130, 130) : 0), r: 90, t: 0, dur: 1.0, dmg: d.atk * 1.8, fx: d.aoeFx });
       }
-      e.aoeT = e.enraged ? 2.5 : 4;
+      e.aoeT = e.enraged ? (d.aoeCd2 || 2.5) : (d.aoeCd || 4);
     }
   }
 
@@ -336,7 +380,7 @@ class GameScene extends Phaser.Scene {
     this.msg('Bạn đã bị hạ gục – hồi sinh tại điểm gần nhất (không mất đồ)');
     this.time.delayedCall(1500, () => {
       const cp = [...CHECKPOINTS].sort((a, b) => dist(a, this.p) - dist(b, this.p))[0];
-      this.p.setPosition(cp.x, cp.y);
+      this.p.setPosition(cp.x, cp.y); this.playSummon(cp.x, cp.y);
       this.ps.hp = this.ps.maxHp; this.ps.iframes = 2;
       this.playerDead = false; this.target = null;
       if (AREA.mode === 'survival') { this.enemies.clear(true, true); this.wave = 0; this.waveT = 3; } // thua thì làm lại từ đợt 1
@@ -393,6 +437,46 @@ class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(w.x - p.x, w.y - p.y).normalize();
   }
 
+  makePedestal(x, y) { // bệ đá triệu hồi: vòng rune phát sáng nhịp thở + hạt sáng bay lên
+    const rune = RUNE[AREA_THEME[AREA_ID]] || 0x7fd0ff, A = Phaser.BlendModes.ADD;
+    this.add.image(x, y, 'pedestal').setOrigin(0.5, 0.52).setDepth(1.5);
+    const glow = this.add.image(x, y - 2, 'glow').setTint(rune).setBlendMode(A).setDepth(1.6).setScale(2.1, 0.9).setAlpha(0.5);
+    this.tweens.add({ targets: glow, alpha: { from: 0.28, to: 0.7 }, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    this.add.particles(x, y - 4, 'spark', { tint: rune, lifespan: 1400, speedY: { min: -38, max: -18 }, x: { min: -34, max: 34 }, y: { min: -10, max: 10 }, scale: { start: 0.9, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: 220, blendMode: 'ADD' }).setDepth(1.7);
+    return { x, y };
+  }
+
+  playSummon(x, y) { // triệu hồi: cột sáng giáng xuống, hai vòng sóng lan ra, tia sáng tóe; nhân vật hiện dần
+    const rune = RUNE[AREA_THEME[AREA_ID]] || 0x7fd0ff, A = Phaser.BlendModes.ADD;
+    const beam = this.add.image(x, y + 6, 'beam').setOrigin(0.5, 1).setTint(rune).setBlendMode(A).setDepth(4000).setScale(3.2, 3.6).setAlpha(0.95);
+    this.tweens.add({ targets: beam, alpha: 0, scaleX: 0.8, duration: 1100, ease: 'Cubic.out', onComplete: () => beam.destroy() });
+    for (let k = 0; k < 2; k++) {
+      const ring = this.add.image(x, y, 'ring').setTint(rune).setBlendMode(A).setDepth(4000).setScale(0.3, 0.13).setAlpha(0.95);
+      this.tweens.add({ targets: ring, scaleX: 2.6, scaleY: 1.1, alpha: 0, delay: k * 220, duration: 800, ease: 'Cubic.out', onComplete: () => ring.destroy() });
+    }
+    const em = this.add.particles(x, y - 20, 'spark', { tint: rune, lifespan: 900, speed: { min: 40, max: 150 }, angle: { min: 200, max: 340 }, scale: { start: 1.1, end: 0 }, alpha: { start: 1, end: 0 }, gravityY: 60, blendMode: 'ADD', emitting: false }).setDepth(4001);
+    em.explode(28); this.time.delayedCall(1200, () => em.destroy());
+    this.summonT = 0.001; this.ps.iframes = Math.max(this.ps.iframes, 1.4); sfx('level');
+  }
+
+  makePortalFx(p) { // cổng xoáy: hai lớp xoáy ngược chiều + lõi sáng + hạt hút vào tâm; màu và độ lớn tăng theo mức nguy hiểm của bản đồ đích
+    const dest = AREAS[p.to], danger = DANGER[p.to] ?? 1, locked = !!(dest.need && !(G.q[dest.need] && G.q[dest.need].done));
+    const col = locked ? 0x808090 : PORTAL_COL[danger], sc = 0.5 + danger * 0.07, spd = 1 + danger * 0.18, A = Phaser.BlendModes.ADD, cy = p.y - 20;
+    const g = this.add.image(p.x, p.y, 'glow').setTint(col).setBlendMode(A).setDepth(1.2).setScale(4.8 * sc, 2.6 * sc).setAlpha(locked ? 0.25 : 0.55);
+    this.tweens.add({ targets: g, alpha: { from: locked ? 0.15 : 0.35, to: locked ? 0.3 : 0.75 }, duration: 1100 / spd, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    const s1 = this.add.image(p.x, cy, 'swirl').setTint(col).setBlendMode(A).setDepth(3).setScale(sc * 0.8).setAlpha(locked ? 0.35 : 0.9);
+    const s2 = this.add.image(p.x, cy, 'swirl').setTint(0xffffff).setBlendMode(A).setDepth(3).setScale(sc * 0.5).setFlipX(true).setAlpha(locked ? 0.15 : 0.55);
+    this.tweens.add({ targets: s1, angle: 360, duration: 6500 / spd, repeat: -1 }); this.tweens.add({ targets: s2, angle: -360, duration: 3600 / spd, repeat: -1 });
+    const core = this.add.image(p.x, cy, 'glow').setTint(0xffffff).setBlendMode(A).setDepth(3).setScale(sc * 0.9);
+    this.tweens.add({ targets: core, scale: sc * 1.3, alpha: { from: 0.5, to: 1 }, duration: 800 / spd, yoyo: true, repeat: -1 });
+    if (!locked) this.add.particles(p.x, cy, 'spark', { tint: col, lifespan: 1000, emitZone: { type: 'edge', source: new Phaser.Geom.Circle(0, 0, 77 * sc), quantity: 1 }, moveToX: p.x, moveToY: cy, scale: { start: 1, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: Math.max(40, 150 - danger * 22), blendMode: 'ADD' }).setDepth(3);
+    this.add.text(p.x, p.y + 36 + danger * 3, `${dest.name}\n${'★'.repeat(Math.max(1, danger))}${locked ? '  🔒' : ''}`, { fontFamily: 'Montserrat, sans-serif', fontStyle: 'bold', fontSize: '12px', align: 'center', color: locked ? '#aab' : '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(3.1).setLineSpacing(1);
+  }
+
+  hardenBoss(b) { // Thử Thách Boss: đánh nhanh hơn, nhiều vòng cảnh báo hơn, hồi chiêu ngắn hơn
+    Object.assign(b.d, { attackCd: b.d.attackCd * 0.7, aoeN: (b.d.aoeN || 1) + 1, aoeCd: 2.6, aoeCd2: 1.6, speed: b.d.speed * 1.15, atk: Math.round(b.d.atk * 1.15) });
+  }
+
   updateSway(t, dt) { // cỏ lay theo gió; rung và nghiêng ra khi nhân vật / quái đi qua
     const v = this.cameras.main.worldView, actors = [this.p];
     this.enemies.getChildren().forEach(e => { if (e.active && !e.dead) actors.push(e); });
@@ -403,11 +487,12 @@ class GameScene extends Phaser.Scene {
 
   updateChar(dt) { // chọn khung hình, nhún/lắc, bóng đổ, nhấp nháy khi né / bị đánh
     const a = this.anim, s = this.ps, f = this.face; a.t += dt;
+    let sp = 1; if (this.summonT > 0) { this.summonT += dt; sp = Math.min(1, this.summonT / 1.0); if (sp >= 1) this.summonT = 0; } const ss = 0.65 + 0.35 * sp; // hiện dần khi được triệu hồi
     if (a.atk) { a.atk.t += dt; if (a.atk.t >= a.atk.dur) a.atk = null; }
     const dir = Math.abs(f.x) > Math.abs(f.y) ? (f.x < 0 ? 'left' : 'right') : (f.y < 0 ? 'up' : 'down');
     const r = frameFor(CFG.classId, { dir, moving: this.p.body.velocity.length() > 25 && !this.playerDead, t: a.t, aimRight: a.aim >= 0, lunge: this.ps.melee ? 14 : 5, atk: a.atk && { kind: a.atk.kind, p: a.atk.t / a.atk.dur } });
-    this.pv.setFrame(r.name).setFlipX(r.flipX).setPosition(this.p.x + r.dx, this.p.y + r.dy).setRotation(r.rot).setScale(r.sx, r.sy).setDepth(10 + this.p.y);
-    const al = this.playerDead ? 0.4 : (s.iframes > 0 ? 0.6 : 1); this.pv.setAlpha(al); this.shadow.setPosition(this.p.x, this.p.y - 1).setAlpha(al).setDepth(9 + this.p.y);
+    this.pv.setFrame(r.name).setFlipX(r.flipX).setPosition(this.p.x + r.dx, this.p.y + r.dy).setRotation(r.rot).setScale(r.sx * ss, r.sy * ss).setDepth(10 + this.p.y);
+    const al = (this.playerDead ? 0.4 : (s.iframes > 0 ? 0.6 : 1)) * sp; this.pv.setAlpha(al); this.shadow.setPosition(this.p.x, this.p.y - 1).setAlpha(al).setDepth(9 + this.p.y);
     const chill = s.freezeT > 0 || s.slowT > 0;
     if (chill !== this.chilled) { this.chilled = chill; if (chill) this.pv.setTint(0x9fd8ff); else this.pv.clearTint(); }
   }
@@ -439,7 +524,7 @@ class GameScene extends Phaser.Scene {
 
   nextWave() {
     const w = ++this.wave, tier = Math.min(4, Math.floor((w - 1) / 4)), sc = 1 + 0.15 * (w - 1);
-    const mobs = ['wolf', 'spider', 'imp', 'frost_wolf', 'shade'], n = Math.min(14, 2 + w);
+    const mobs = ['wolf', 'spider', 'imp', 'frost_wolf', 'shade'], n = this.enemies.countActive() > 170 ? 0 : Math.min(80, 5 * (2 + w)); // x5 quái, luôn truy đuổi
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, r = Phaser.Math.Between(300, 450);
       const x = Phaser.Math.Clamp(this.p.x + Math.cos(a) * r, 60, CFG.world.w - 60), y = Phaser.Math.Clamp(this.p.y + Math.sin(a) * r, 60, CFG.world.h - 60);
@@ -454,14 +539,17 @@ class GameScene extends Phaser.Scene {
     const f = ++this.floor, m = AREA.mode;
     const mobs = ['wolf', 'spider', 'imp', 'frost_wolf', 'shade'], bosses = ['wolf_king', 'spider_queen', 'fire_dragon', 'ice_king', 'ma_vuong'];
     let tier = Math.min(4, Math.floor((f - 1) / 5)), sc = 1 + 0.2 * (f - 1), boss = f % 5 === 0, n = boss ? 4 : Math.min(12, 3 + f), elite = false;
-    if (m === 'bossrush') { tier = (f - 1) % 5; sc = 1 + 0.15 * Math.floor((f - 1) / 5); boss = true; n = 0; } // lần lượt từng boss
+    if (m === 'bossrush') { /* khó hơn hẳn: hệ số 1,8 + tăng dần theo tầng và theo vòng */ tier = (f - 1) % 5; sc = 1.8 + 0.12 * (f - 1) + 0.35 * Math.floor((f - 1) / 5); boss = true; n = 0; } // lần lượt từng boss
     if (m === 'rift') { sc = 2 + 0.3 * (f - 1); elite = true; } // quái tinh anh, độ khó cao
     if (m === 'daily') { tier = Math.min(4, Math.floor(G.level / 20)); sc = 1 + 0.15 * (f - 1); boss = f === 5; n = boss ? 3 : 3 + f; }
     for (let i = 0; i < n; i++) {
       const e = this.spawn(mobs[tier], Phaser.Math.Between(CFG.world.w * 0.2, CFG.world.w * 0.82), Phaser.Math.Between(CFG.world.h * 0.15, CFG.world.h * 0.7), true, sc);
       if (elite) e.setTint(0xffb0b0);
     }
-    if (boss) this.spawn(bosses[tier], CFG.world.w / 2, CFG.world.h * 0.25, true, sc);
+    if (boss) {
+      const bb = this.spawn(bosses[tier], CFG.world.w / 2, CFG.world.h * 0.25, true, sc);
+      if (m === 'bossrush') { this.hardenBoss(bb); if (f > 5) this.hardenBoss(this.spawn(bosses[(tier + 4) % 5], CFG.world.w * 0.35, CFG.world.h * 0.3, true, sc * 0.85)); } // từ vòng 2: hai boss cùng lúc
+    }
     this.msg(`Tầng ${f}${boss ? ' – BOSS' : ''}${elite ? ' (Tinh anh)' : ''}`);
   }
 
@@ -563,12 +651,21 @@ class GameScene extends Phaser.Scene {
         .sort((a, b) => dist(this.p, a) - dist(this.p, b));
       this.target = list[0] || null;
     }
-    if (Phaser.Input.Keyboard.JustDown(k.Q) || once.auto) { this.auto = !this.auto; once.auto = false; this.msg(this.auto ? 'Auto Battle: BẬT' : 'Auto Battle: TẮT'); }
-
-    // Auto: tự tiến lại gần mục tiêu khi người chơi không điều khiển
-    const autoTarget = this.auto ? (this.target || this.nearestEnemy(420)) : null;
+    if (Phaser.Input.Keyboard.JustDown(k.Q) || once.auto) { once.auto = false; this.toggleAuto(); }
+    if (Phaser.Input.Keyboard.JustDown(k.R) || once.autoCfg) { once.autoCfg = false; this.board.open('equip', 'auto'); } // giữ nút Auto / phím R: bảng cài đặt Auto
+    // Auto: chọn mục tiêu và vật phẩm theo cấu hình (phạm vi, quanh vị trí hay tự do, nhặt ngay hay sau khi hết quái)
+    const cfg = G.set.auto; let goal = null;
     this.navT -= dt;
-    if (this.auto && v.lengthSq() < 0.01 && autoTarget && dist(this.p, autoTarget) > s.range * 0.8) v.copy(this.steerAuto(autoTarget)); // vòng qua vật cản
+    if (this.auto) {
+      const alive = this.enemies.getChildren().filter(e => e.active && !e.dead);
+      let autoTarget = this.target || pickTarget(cfg, this.autoAnchor, this.p, alive);
+      if (!autoTarget && cfg.mode === 'free') autoTarget = this.nearestEnemy(1e9); // tự do: chủ động đi tìm quái khắp bản đồ
+      const drop = pickDrop(cfg, this.autoAnchor, this.p, this.drops, G.inv.length >= G.cap), inReach = autoTarget && dist(this.p, autoTarget) <= s.range * 0.8;
+      if (drop && (cfg.pickWhen === 'now' || !autoTarget)) goal = drop;
+      else if (autoTarget && !inReach) goal = autoTarget;
+      else if (!autoTarget && cfg.mode === 'around' && this.autoAnchor && dist(this.p, this.autoAnchor) > 70) goal = this.autoAnchor;
+      if (goal && v.lengthSq() < 0.01) v.copy(this.steerAuto(goal)); // vòng qua vật cản bằng A*
+    }
     if (v.lengthSq() > 0.01) this.face.copy(v).normalize();
 
     // Né (lướt + miễn sát thương ngắn)
@@ -609,7 +706,7 @@ class GameScene extends Phaser.Scene {
     const s = this.ps, sk = SKILLS[s.skill], v = this.cameras.main.worldView;
     const boss = this.enemies.getChildren().find(e => e.active && !e.dead && e.d.boss && e.state !== 'idle');
     this.hudApi.update({
-      lv: G.level, hp: s.hp, maxHp: s.maxHp, xpPct: Math.min(100, G.exp / expNeed(G.level) * 100),
+      area: AREA.name, lv: G.level, hp: s.hp, maxHp: s.maxHp, xpPct: Math.min(100, G.exp / expNeed(G.level) * 100),
       info: `${AREA.name}\nVàng ${G.gold.toLocaleString('vi-VN')} · Túi ${G.inv.length}/${G.cap}\n${this.questText()}`,
       boss: boss ? { name: boss.d.name, hp: boss.hp, max: boss.d.hp } : null,
       cdSkill: Math.max(0, s.skillCd) / (sk.cooldown * (1 - s.cdr / 100)), cdDodge: Math.max(0, s.dodgeCd) / 1.2, auto: this.auto, showMini: G.set.minimap,
@@ -649,7 +746,7 @@ class GameScene extends Phaser.Scene {
     this.updateDrops();
     this.updatePortal(dt);
     this.updatePet(dt);
-    if (AREA.mode === 'survival' && !this.playerDead && (this.waveT -= dt) <= 0) { this.waveT = 15; this.nextWave(); }
+    if (AREA.mode === 'survival' && !this.playerDead && (this.waveT -= dt) <= 0) { this.waveT = 9; this.nextWave(); }
     // Bộ Dragon Knight 6 món: Hỏa Long phun lửa quanh người mỗi 8 giây
     this.dragonT = this.ps.dragonFire ? (this.dragonT || 0) + dt : 0;
     if (this.dragonT >= 8 && !this.playerDead) { this.dragonT = 0; this.meleeHit(3.0, 130); this.msg('Hỏa Long phun lửa!'); }

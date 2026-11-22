@@ -85,3 +85,16 @@ export function itemName(it, classId) {
   const set = it.set && SETS[it.set];
   return `${n} ${RARITY[Math.min(it.ri, 6)].name}${set ? ' · ' + set.name : ''}`;
 }
+
+// ---- Thẻ bài: bộ lọc theo bậc / loại / cấp độ và bán hàng loạt (không bao giờ bán thẻ đang dùng, đã khóa hoặc đã tiến hóa) ----
+export const CARD_RV = [10, 25, 60, 150, 400, 1000, 2500];
+export const cardRi = def => RARITY.findIndex(r => r.id === def.rarity);
+export const cardValue = (cd, def) => Math.round(CARD_RV[cardRi(def)] * (1 + 0.6 * ((cd.lv || 1) - 1)) * (1 + 0.5 * (cd.star || 0)) * (cd.evo ? 3 : 1));
+export const CARD_LV = { all: ['Mọi cấp', () => true], a: ['Cấp 1–5', l => l <= 5], b: ['Cấp 6–10', l => l >= 6 && l <= 10], c: ['Cấp 11–20', l => l >= 11 && l <= 20], d: ['Cấp 21+', l => l >= 21] };
+export function filterCards(G, CARDS, f = {}) {
+  return G.cards.filter(cd => {
+    const def = CARDS[cd.t]; if (!def) return false;
+    return (f.rar == null || f.rar === 'all' || cardRi(def) === f.rar) && (!f.kind || f.kind === 'all' || (def.kind || 'monster') === f.kind) && (CARD_LV[f.lv || 'all'] || CARD_LV.all)[1](cd.lv || 1);
+  });
+}
+export const cardSellList = (G, CARDS, f) => filterCards(G, CARDS, f).filter(cd => !G.deck.includes(cd.t) && !cd.locked && !cd.evo);

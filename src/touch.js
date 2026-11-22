@@ -1,5 +1,5 @@
 // Joystick ảo + nút cho điện thoại. Đọc qua đối tượng TOUCH dùng chung.
-export const TOUCH = { x: 0, y: 0, atk: false, once: { skill: false, dodge: false, auto: false } };
+export const TOUCH = { x: 0, y: 0, atk: false, once: { skill: false, dodge: false, auto: false, autoCfg: false } };
 
 const stick = document.getElementById('stick');
 const knob = document.getElementById('knob');
@@ -32,4 +32,8 @@ const tap = (id, key) => document.getElementById(id).addEventListener('pointerdo
 hold('bAtk', 'atk');
 tap('bSkill', 'skill');
 tap('bDodge', 'dodge');
-tap('bAuto', 'auto');
+// Nút Auto: chạm = bật/tắt, giữ ~0,45 giây = mở bảng cài đặt Auto
+{ const b = document.getElementById('bAuto'); let timer = null, fired = false;
+  b.addEventListener('pointerdown', () => { fired = false; timer = setTimeout(() => { fired = true; TOUCH.once.autoCfg = true; }, 450); });
+  b.addEventListener('pointerup', () => { clearTimeout(timer); if (!fired) TOUCH.once.auto = true; });
+  ['pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => clearTimeout(timer))); }

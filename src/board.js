@@ -1,9 +1,10 @@
 // Bảng giao diện chính 16:9: ảnh nền do bạn cung cấp (đã xóa chữ/ô mẫu) + các lớp tương tác đặt theo % của ảnh.
 import { LAYOUT as L } from './layout.js';
-import { RARITY, SLOT_NAME, LABEL, BONUS_LABEL, TYPE_VN, KIND_VN, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, awakenCost, rollAwaken, fmtAw, TRANS, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix, derive, expNeed, RESONANCE } from './items.js';
+import { fmt2, RARITY, SLOT_NAME, LABEL, BONUS_LABEL, TYPE_VN, KIND_VN, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, awakenCost, rollAwaken, fmtAw, TRANS, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix, derive, expNeed, RESONANCE } from './items.js';
 import { CLASSES, CFG, AREAS, QUESTS, SKILLS, MONSTERS } from './data.js';
-import { itemName, iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
+import { cardValue, cardRi, CARD_LV, filterCards, cardSellList, itemName, iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
 import { exportJSON, importJSON } from './save.js';
+import { KIND_CHIPS } from './auto.js';
 
 const TABS = [['equip', 'MẶC ĐỒ'], ['skill', 'KỸ NĂNG'], ['card', 'THẺ BÀI'], ['quest', 'NHIỆM VỤ'], ['map', 'BẢN ĐỒ']];
 const AREA_ORDER = ['forest', 'cave', 'volcano', 'ice', 'dark', 'hub', 'tower', 'survival', 'bossrush', 'rift', 'daily'];
@@ -11,7 +12,7 @@ const FOOT = [78.7, 80.3, 11.3, 2.4];
 const PER_PAGE = 42;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const P = r => `left:${r[0]}%;top:${r[1]}%;width:${r[2]}%;height:${r[3]}%`;
-const fmtNum = n => Math.round(n).toLocaleString('vi-VN');
+const fmtNum = n => fmt2(n);
 const rcol = ri => RARITY[Math.min(ri, 6)].color;
 
 const CSS = `
@@ -58,6 +59,10 @@ const CSS = `
 #ui .chip{display:inline-block;border:1px solid #6b5a3a;border-radius:2em;padding:.22em .8em;margin:.15em;cursor:pointer;font-weight:600;font-size:.85em}#ui .chip.on{background:#8a5a1a;color:#fff3d6;border-color:#ffcf7a}
 #ui .ghost{position:fixed;z-index:99;width:6em;height:6em;pointer-events:none;opacity:.92;transform:translate(-50%,-50%);filter:drop-shadow(0 0 .6em #000)}
 #ui .rail{background:#1a1610;border-radius:2em}#ui .rail i{position:absolute;left:8%;width:84%;border-radius:2em;background:linear-gradient(180deg,#e1a64d,#8a5a1a);box-shadow:0 0 .6em #ffb44a88}
+#ui .page.wide{padding:.7em .9em;border-width:.12em;border-radius:.4em}
+#ui .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.5em .9em;margin-top:.6em}
+#ui .g3 h4{margin:.1em 0 .3em;color:#e8a640;font-size:.95em;letter-spacing:.04em;border-bottom:1px solid #6b5a3a;padding-bottom:.15em}
+#ui .kv{display:flex;justify-content:space-between;gap:.6em;padding:.14em .1em;border-bottom:1px solid #2c2820;font-size:.9em}#ui .kv b{color:#ffd98a;text-align:right}
 `;
 
 export function pickClass(classes) {
@@ -76,7 +81,7 @@ export function initBoard(G, hooks) {
   const root = document.createElement('div'); root.id = 'ui'; root.innerHTML = '<div class="board"></div>';
   (document.getElementById('stage') || document.body).appendChild(root);
   const board = root.firstChild;
-  const ui = { tab: 'equip', page: 0, group: 'all', rarity: 'all', sort: 'new', sel: null, modal: null, q: { mode: 'sell', maxRi: 1, kinds: new Set() }, text: '' };
+  const ui = { tab: 'equip', page: 0, group: 'all', rarity: 'all', sort: 'new', sel: null, modal: null, q: { mode: 'sell', maxRi: 1, kinds: new Set() }, text: '', cf: { rar: 'all', kind: 'all', lv: 'all' }, wide: false, direct: false };
   const cls = () => CLASSES[G.classId || CFG.classId];
   const ps = () => hooks.ps ? hooks.ps() : { hp: 1, maxHp: 1 };
   const commit = () => { hooks.onChange && hooks.onChange(); render(); };
@@ -95,6 +100,7 @@ export function initBoard(G, hooks) {
     const s = ps(), c = cls(), stage = lookStage(G), pct = Math.min(100, G.exp / expNeed(G.level) * 100);
     let h = `<div class="a c" style="${P(L.stage)}"><img src="assets/chars/${G.classId || CFG.classId}_portrait.png" alt="" style="width:100%;height:92%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 0 ${0.4 + stage * 0.6}em ${['#0000', '#6fb6ff', '#6ee7ff', '#ffd34d', '#ff4aff'][stage]})"></div>`;
     h += `<div class="a c" style="${P(L.pname)};font-weight:800;color:#3a2412;font-size:calc(var(--u)*1.05px)">Nhà Thám Hiểm</div><div class="a c" style="${P(L.psub)};font-weight:700;color:#4d3317;font-size:calc(var(--u)*.78px)">Lv. ${G.level} · ${esc(c.name)} · ${LOOK_NAMES[stage]}</div>`;
+    if (ui.wide) return h + wideStats(d, s, c); // bảng chỉ số mở rộng thay cho ô trang bị/túi đồ
     for (const slot of Object.keys(L.eslots)) { // 10 ô trang bị (thả vào để mặc)
       const it = G.eq[slot];
       h += `<div class="a es${it ? ' f' + (it.ri >= 5 ? ' hi' : '') : ''}" data-drop="eq:${slot}" data-slot="${slot}" style="${P(L.eslots[slot])};--c:${it ? glowColor(it) : '#000'}">` +
@@ -116,12 +122,10 @@ export function initBoard(G, hooks) {
     h += `<div class="a ds${pet ? ' f' : ''}" data-a="modal" data-m="pets" style="${P(L.dslots[6])};--c:#9fd8ff">${pet ? `<b>${esc(pet.name)}</b><span>Cấp ${(G.petLv && G.petLv[G.pet]) || 1}</span>` : 'Thú đồng hành'}</div>`;
     h += `<div class="a ds f" data-a="modal" data-m="pets" style="${P(L.dslots[7])};--c:#ffd34d"><b>Ngoại hình</b><span>${LOOK_NAMES[stage]}</span></div>`;
     // chỉ số
-    h += `<div class="a" style="${P(L.stats_lv)};display:flex;justify-content:space-between;align-items:center"><b style="font-size:calc(var(--u)*1.7px);color:#ffe0a0;font-weight:800">Lv. ${G.level}</b><span style="font-size:calc(var(--u)*.8px);color:#f0c070;font-weight:700">EXP ${pct.toFixed(1)}%</span></div><div class="a bar" style="${P(L.stats_bar)}"><i style="width:${pct}%"></i></div>`;
-    const rows = [['Sinh Lực', `${Math.ceil(s.hp)} / ${Math.round(d.maxHp)}`], ['Hút Máu', `${d.lifesteal}%`], ['Hồi Máu / Hạ Quái', `${d.heal_kill}%`],
-      ['Tấn Công', fmtNum(d.matk)], ['Phòng Thủ', fmtNum(d.def)], ['Sát Thương Boss', `+${d.boss_dmg}%`], ['Né Tránh', `${d.dodge}%`], ['Chí Mạng', `${d.crit}%`], ['Sát Thương Chí Mạng', `${Math.round(d.critDmg * 100)}%`],
-      ['Sát Thương Kỹ Năng', `+${d.skillDmg}%`], ['Tốc Độ Di Chuyển', d.speed],
-      ['Giảm Hồi Chiêu', `${d.cdr}%`], ['Thưởng EXP', `+${d.exp_bonus}%`], ['Thưởng Vàng', `+${d.gold_bonus}%`], ['May Mắn', `+${d.luck}%`], ['Hỏa Long (bộ 6)', d.dragonFire ? 'Bật' : '—']];
+    h += `<div class="a" style="${P(L.stats_lv)};display:flex;justify-content:space-between;align-items:center"><b style="font-size:calc(var(--u)*1.7px);color:#ffe0a0;font-weight:800">Lv. ${G.level}</b><span style="font-size:calc(var(--u)*.8px);color:#f0c070;font-weight:700">EXP ${fmt2(pct)}%</span></div><div class="a bar" style="${P(L.stats_bar)}"><i style="width:${pct}%"></i></div>`;
+    const rows = statRows(d, s, c);
     rows.forEach((r, i) => { h += `<div class="a srow" style="${P(L.srows[i])}"><span>${r[0]}</span><b>${r[1]}</b></div>`; });
+    h += `<div class="a hit c" data-a="wide" title="Mở rộng bảng chỉ số" style="left:65.9%;top:19.3%;width:2.2%;height:3%;font-size:calc(var(--u)*1.1px);color:#ffd98a">⇔</div>`;
     h += `<div class="a c" style="${P(L.shead)};justify-content:flex-start;font-weight:700;color:#e8a640;font-size:calc(var(--u)*.85px)">Gia Tăng</div>`;
     ['Cài Đặt', 'Thú & Ngoại Hình', 'Thành Tựu', 'Chế Tạo'].forEach((t, i) => { h += `<div class="a hit" data-a="modal" data-m="${['set', 'pets', 'ach', 'craft'][i]}" style="${P(L.sbtn_hit[i])}"></div><div class="a c" style="${P(L.sbtn[i])};font-weight:700;color:#e6dac0;font-size:calc(var(--u)*.8px);pointer-events:none">${t}</div>`; });
     // túi đồ
@@ -161,11 +165,14 @@ export function initBoard(G, hooks) {
       h += `<h3>Bộ thẻ · Quái ${cnt('monster')}/${DECK_LIMIT.monster} · Kỹ năng ${cnt('skill')}/${DECK_LIMIT.skill} · Di vật ${cnt('relic')}/${DECK_LIMIT.relic}</h3>`;
       const ty = {}; G.deck.forEach(id => { const c = CARDS[id]; if (c && c.type && G.cards.some(x => x.t === id)) ty[c.type] = (ty[c.type] || 0) + 1; });
       h += `<div class="dim" style="margin-bottom:.6em">Cộng hưởng: ${Object.keys(RESONANCE).map(k => `${TYPE_VN[k] || k} ${ty[k] || 0}/2${(ty[k] || 0) >= 2 ? ' ✓' : ''}`).join(' · ')}</div>`;
-      h += G.cards.map(cd => {
-        const def = CARDS[cd.t]; if (!def) return ''; const on = G.deck.includes(cd.t), cap = CARD_CAP[def.rarity], k = cardLvCost(cd), col = rcol(RARITY.findIndex(r => r.id === def.rarity));
-        return `<div class="row" style="border-color:${col}"><div class="g"><b style="color:${col}">${esc(def.name)}${cd.evo ? ' ✦' : ''}</b> <span class="dim">${KIND_VN[def.kind || 'monster']} · Lv.${cd.lv || 1}/${cap} · ${'★'.repeat(cd.star) || 'chưa có sao'}</span><small>${Object.entries(def.bonus).map(([a, v]) => `+${v}% ${(BONUS_LABEL[a] || a)}`).join(', ')}${def.note ? esc(def.note) : ''}</small></div>
-        <button class="b" data-a="deck" data-id="${esc(cd.t)}">${on ? 'Gỡ' : 'Trang bị'}</button><button class="b" data-a="clv" data-id="${esc(cd.t)}">Lên cấp ${k.gold}g+${k.stone}đá</button>${cd.evo ? '' : `<button class="b" data-a="cevo" data-id="${esc(cd.t)}">Tiến hóa</button>`}</div>`;
-      }).join('') || '<div class="dim">Chưa có thẻ nào. Hạ quái và boss để nhận thẻ.</div>';
+      const clist = filterCards(G, CARDS, ui.cf), sl = cardSellList(G, CARDS, ui.cf);
+      h += `<div class="dim">Bậc</div>${chips([['all', 'Tất cả'], ...RARITY.map((r, i) => [i, r.name])], ui.cf.rar, 'cfr', 'v')}<div class="dim" style="margin-top:.3em">Loại</div>${chips([['all', 'Tất cả'], ['monster', 'Thẻ quái'], ['skill', 'Thẻ kỹ năng'], ['relic', 'Di vật']], ui.cf.kind, 'cfk', 'v')}<div class="dim" style="margin-top:.3em">Cấp độ</div>${chips(Object.entries(CARD_LV).map(([k, v]) => [k, v[0]]), ui.cf.lv, 'cfl', 'v')}
+        <div class="acts"><span class="dim">${clist.length} / ${G.cards.length} thẻ</span><button class="b red" data-a="csellmodal" ${sl.length ? '' : 'disabled'}>Bán thẻ theo bộ lọc (${sl.length})</button></div>`;
+      h += clist.map(cd => {
+        const def = CARDS[cd.t], on = G.deck.includes(cd.t), cap = CARD_CAP[def.rarity], k = cardLvCost(cd), col = rcol(cardRi(def));
+        return `<div class="row" style="border-color:${col}"><div class="g"><b style="color:${col}">${esc(def.name)}${cd.evo ? ' ✦' : ''}${cd.locked ? ' 🔒' : ''}</b> <span class="dim">${KIND_VN[def.kind || 'monster']} · Lv.${cd.lv || 1}/${cap} · ${'★'.repeat(cd.star) || 'chưa có sao'}</span><small>${Object.entries(def.bonus).map(([a, v]) => `+${fmt2(v)}% ${BONUS_LABEL[a] || a}`).join(', ')}${def.note ? esc(def.note) : ''}</small></div>
+        <button class="b" data-a="deck" data-id="${esc(cd.t)}">${on ? 'Gỡ' : 'Trang bị'}</button><button class="b" data-a="clv" data-id="${esc(cd.t)}">Lên cấp ${fmt2(k.gold)}g+${k.stone}đá</button>${cd.evo ? '' : `<button class="b" data-a="cevo" data-id="${esc(cd.t)}">Tiến hóa</button>`}<button class="b" data-a="cardlock" data-id="${esc(cd.t)}">${cd.locked ? 'Mở khóa' : 'Khóa'}</button><button class="b red" data-a="cardsell" data-id="${esc(cd.t)}">Bán ${fmt2(cardValue(cd, def))}g</button></div>`;
+      }).join('') || '<div class="dim">Không có thẻ nào khớp bộ lọc. Hạ quái và boss để nhận thẻ.</div>';
     } else if (ui.tab === 'quest') {
       h += `<h3>Nhiệm vụ</h3>` + QUESTS.map(q => {
         const done = questDone(q.id), ready = !q.after || questDone(q.after), p = (G.q[q.id] && G.q[q.id].p) || 0, pct = done ? 100 : Math.min(100, p / q.n * 100);
@@ -190,6 +197,8 @@ export function initBoard(G, hooks) {
     else if (!h && m === 'craft') h = `<h3>Chế tạo · Đá nâng cấp: ${G.mat.stone}</h3><div class="dim">Phân giải trang bị trong túi để lấy đá. Chi phí chế tạo luôn cao hơn đá thu về.</div>` + RECIPES.map((r, k) => `<div class="row"><div class="g"><b>${r.name}</b><small>${r.stone} đá + ${fmtNum(r.gold)} vàng</small></div><button class="b" data-a="craft" data-k="${k}" ${G.mat.stone < r.stone || G.gold < r.gold ? 'disabled' : ''}>Chế tạo</button></div>`).join('');
     else if (!h && m === 'ach') h = '<h3>Thành tựu</h3>' + achHtml();
     else if (!h && m === 'filter') h = filterModal();
+    else if (!h && m === 'auto') h = autoModal();
+    else if (!h && m === 'csell') h = cardSellModal();
     else if (!h && m === 'quick') h = quickModal();
     return h ? `<div class="a veil" data-a="veil"><div class="modal${m === 'quick' || m === 'filter' ? '' : ''}" data-keep>${h}<div class="acts"><button class="b" data-a="closemodal">Đóng</button></div></div></div>` : '';
   }
@@ -216,11 +225,46 @@ export function initBoard(G, hooks) {
     return `<h3>${ui.q.mode === 'sell' ? 'Bán nhanh' : 'Phân giải nhanh'}</h3><div class="dim">Đến độ hiếm</div>${chips(RARITY.slice(0, 6).map((r, i) => [i, r.name]), ui.q.maxRi, 'qri', 'v')}<div class="dim" style="margin-top:.6em">Loại (bỏ trống = tất cả)</div>${[['weapon', 'Vũ khí'], ['helmet', 'Mũ'], ['armor', 'Giáp'], ['gloves', 'Găng'], ['boots', 'Giày'], ['necklace', 'Dây chuyền'], ['ring', 'Nhẫn'], ['cloak', 'Áo choàng'], ['accessory', 'Phụ kiện']].map(([k, n]) => `<span class="chip${kinds.has(k) ? ' on' : ''}" data-a="qkind" data-k="${k}">${n}</span>`).join('')}
       <div style="margin-top:.8em">Sẽ ${ui.q.mode === 'sell' ? 'bán' : 'phân giải'} <b>${t.n}</b> món (không động tới đồ đã khóa) → <b style="color:#ffd98a">${ui.q.mode === 'sell' ? fmtNum(t.gold) + ' vàng' : t.stone + ' đá'}</b></div><div class="acts"><button class="b red" data-a="qgo" ${t.n ? '' : 'disabled'}>Xác nhận</button><button class="b" data-a="qmode">Chuyển sang ${ui.q.mode === 'sell' ? 'phân giải' : 'bán'}</button></div>`;
   }
-  const settingsModal = () => `<h3>Cài đặt</h3><div class="acts">${[['sfx', 'Âm thanh'], ['music', 'Nhạc'], ['lowfx', 'Giảm hiệu ứng'], ['minimap', 'Bản đồ nhỏ']].map(([k, n]) => `<button class="b" data-a="set" data-k="${k}">${n}: ${G.set[k] ? 'Bật' : 'Tắt'}</button>`).join('')}<button class="b" data-a="set" data-k="vol">Âm lượng: ${Math.round(G.set.vol * 100)}%</button></div>
+  const settingsModal = () => `<h3>Cài đặt</h3><div class="acts"><button class="b" data-a="modal" data-m="auto">Cài đặt Auto…</button>${[['sfx', 'Âm thanh'], ['music', 'Nhạc'], ['lowfx', 'Giảm hiệu ứng'], ['minimap', 'Bản đồ nhỏ']].map(([k, n]) => `<button class="b" data-a="set" data-k="${k}">${n}: ${G.set[k] ? 'Bật' : 'Tắt'}</button>`).join('')}<button class="b" data-a="set" data-k="vol">Âm lượng: ${Math.round(G.set.vol * 100)}%</button></div>
     <h3 style="margin-top:1em">Tầm nhìn</h3><div class="acts">${[['near', 'Gần'], ['wide', 'Rộng'], ['ultra', 'Siêu rộng']].map(([k, n]) => `<button class="b${G.set.zoom === k ? '' : ''}" style="${G.set.zoom === k ? 'background:#8a5a1a' : ''}" data-a="zoomset" data-k="${k}">${n}</button>`).join('')}</div>
     <h3 style="margin-top:1em">Sao lưu</h3><div class="acts"><button class="b" data-a="exp">Xuất backup</button><button class="b" data-a="imp">Nhập backup</button></div>`;
   const petsModal = () => `<h3>Thú đồng hành</h3>` + Object.entries(PETS).map(([k, p]) => { const ok = questDone(p.unlock), lv = (G.petLv && G.petLv[k]) || 1; return `<div class="row"><div class="g"><b>${p.name}</b> <span class="dim">Cấp ${lv}/10</span><small>${p.desc}${ok ? '' : ' · Khóa: hoàn thành nhiệm vụ ' + p.unlock}</small></div>${ok ? `<button class="b" data-a="pet" data-k="${k}">${G.pet === k ? 'Cất đi' : 'Mang theo'}</button><button class="b" data-a="plv" data-k="${k}">Nâng ${200 * lv}g</button>` : ''}</div>`; }).join('') +
     `<h3 style="margin-top:1em">Ngoại hình (chỉ thay hình ảnh)</h3><div class="acts">${LOOK_NAMES.map((n, i) => G.level >= LOOK_LV[i] ? `<button class="b" style="${lookStage(G) === i ? 'background:#8a5a1a' : ''}" data-a="look" data-k="${i}">${n}</button>` : `<span class="dim">${n}: Lv.${LOOK_LV[i]}</span>`).join('')}</div>`;
+
+  // ---------- Chỉ số: định dạng số gọn (tối đa 2 chữ số thập phân, dấu phẩy) ----------
+  const statRows = (d, s, c) => [['Sinh Lực', `${fmt2(Math.ceil(s.hp))} / ${fmt2(d.maxHp)}`], ['Hút Máu', `${fmt2(d.lifesteal)}%`], ['Hồi Máu / Hạ Quái', `${fmt2(d.heal_kill)}%`],
+    ['Tấn Công', fmt2(d.matk)], ['Phòng Thủ', fmt2(d.def)], ['Sát Thương Boss', `+${fmt2(d.boss_dmg)}%`], ['Né Tránh', `${fmt2(d.dodge)}%`], ['Chí Mạng', `${fmt2(d.crit)}%`], ['Sát Thương Chí Mạng', `${fmt2(d.critDmg * 100)}%`],
+    ['Sát Thương Kỹ Năng', `+${fmt2(d.skillDmg)}%`], ['Tốc Độ Di Chuyển', fmt2(d.speed)],
+    ['Giảm Hồi Chiêu', `${fmt2(d.cdr)}%`], ['Thưởng EXP', `+${fmt2(d.exp_bonus)}%`], ['Thưởng Vàng', `+${fmt2(d.gold_bonus)}%`], ['May Mắn', `+${fmt2(d.luck)}%`], ['Hỏa Long (bộ 6)', d.dragonFire ? 'Bật' : '—']];
+  const wideStats = (d, s, c) => { // bảng mở rộng: dùng toàn bộ khu giữa, 3 cột, viền nhỏ gọn
+    const cid = G.classId || CFG.classId, pct = Math.min(100, G.exp / expNeed(G.level) * 100), cnt = {};
+    Object.values(G.eq).forEach(it => { if (it && it.set) cnt[it.set] = (cnt[it.set] || 0) + 1; });
+    const grp = (t, arr) => `<div class="g3"><h4>${t}</h4>${arr.map(([a, b]) => `<div class="kv"><span>${a}</span><b>${b}</b></div>`).join('')}</div>`;
+    return `<div class="a page wide" style="${P(L.panel_all)}"><div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Bảng chỉ số · Lv. ${G.level} · ${esc(c.name)}</h3><button class="b" data-a="wide">Thu gọn ⇐</button></div><div class="grid3">
+      ${grp('Cơ bản', [['Cấp', G.level], ['EXP', `${fmt2(G.exp)} / ${fmt2(expNeed(G.level))} (${fmt2(pct)}%)`], ['Sinh lực', `${fmt2(Math.ceil(s.hp))} / ${fmt2(d.maxHp)}`], ['Tấn công', fmt2(d.matk)], ['Phòng thủ', fmt2(d.def)], ['Tốc độ di chuyển', fmt2(d.speed)], ['Tầm đánh', fmt2(c.range)]])}
+      ${grp('Chiến đấu', [['Chí mạng', `${fmt2(d.crit)}%`], ['ST chí mạng', `${fmt2(d.critDmg * 100)}%`], ['Né tránh', `${fmt2(d.dodge)}%`], ['Hút máu', `${fmt2(d.lifesteal)}%`], ['Hồi máu/hạ quái', `${fmt2(d.heal_kill)}%`], ['ST Boss', `+${fmt2(d.boss_dmg)}%`], ['ST kỹ năng', `+${fmt2(d.skillDmg)}%`], ['Giảm hồi chiêu', `${fmt2(d.cdr)}%`]])}
+      ${grp('Thưởng & tài nguyên', [['May mắn', `+${fmt2(d.luck)}%`], ['Thưởng EXP', `+${fmt2(d.exp_bonus)}%`], ['Thưởng vàng', `+${fmt2(d.gold_bonus)}%`], ['Vàng', fmt2(G.gold)], ['Đá nâng cấp', fmt2(G.mat.stone)], ['Túi đồ', `${G.inv.length} / ${G.cap}`]])}
+      ${grp('Tiến trình', [['Điểm kỹ năng còn', spLeft(G)], ['Quái đã hạ', fmt2(G.st.kills)], ['Boss đã hạ', fmt2(G.st.boss)], ['Kỷ lục Tháp', fmt2(G.st.best || 0)], ['Kỷ lục Sinh tồn', fmt2(G.st.surv || 0)], ['Kỷ lục Thử thách Boss', fmt2(G.st.rec_bossrush || 0)], ['Kỷ lục Khe nứt', fmt2(G.st.rec_rift || 0)]])}
+      ${grp('Bộ trang bị, thẻ, thú', [...Object.keys(cnt).map(k => [esc(SETS[k].name), `${cnt[k]}/6`]), ['Hỏa Long (bộ 6)', d.dragonFire ? 'Bật' : '—'], ['Thẻ đang dùng', `${G.deck.length}/14`], ['Thú', PETS[G.pet] ? PETS[G.pet].name : '—'], ['Ngoại hình', LOOK_NAMES[lookStage(G)]]])}
+      ${grp('Trang bị đang mặc', Object.keys(L.eslots).map(sl => [SLOT_NAME[sl], G.eq[sl] ? esc(itemName(G.eq[sl], cid)) + (G.eq[sl].enh ? ' +' + G.eq[sl].enh : '') : '—']))}
+    </div></div>`;
+  };
+
+  // ---------- Cài đặt Auto ----------
+  const AU = (f, arr) => arr.map(([v, n]) => `<span class="chip${G.set.auto[f] === v ? ' on' : ''}" data-a="au" data-f="${f}" data-v="${v}">${n}</span>`).join('');
+  const AT = (f, arr) => arr.map(([v, n]) => `<span class="chip${G.set.auto[f].includes(v) ? ' on' : ''}" data-a="aut" data-f="${f}" data-v="${v}">${n}</span>`).join('');
+  const autoModal = () => { const a = G.set.auto, rarList = RARITY.map((r, i) => [i, r.name]); return `<h3>Cài đặt Auto</h3>
+    <div class="dim">Phạm vi tìm quái</div>${AU('range', [['near', 'Gần'], ['far', 'Xa'], ['map', 'Toàn bản đồ']])}
+    <div class="dim" style="margin-top:.5em">Chế độ di chuyển</div>${AU('mode', [['around', 'Auto quanh vị trí'], ['free', 'Auto tự do']])}
+    <div class="dim" style="margin-top:.5em">Nhặt đồ</div>${AU('pickWhen', [['now', 'Nhặt ngay'], ['after', 'Nhặt sau khi hết quái']])}
+    <div class="dim" style="margin-top:.5em">Bộ lọc vật phẩm nhặt</div>${AU('pickMode', [['all', 'Tất cả'], ['kinds', 'Theo loại'], ['rarity', 'Theo phẩm chất'], ['both', 'Cả hai']])}
+    ${a.pickMode === 'kinds' || a.pickMode === 'both' ? `<div class="dim">Loại cần nhặt</div>${AT('pickKinds', KIND_CHIPS)}` : ''}${a.pickMode === 'rarity' || a.pickMode === 'both' ? `<div class="dim">Phẩm chất cần nhặt</div>${AT('pickRar', rarList)}` : ''}
+    <div class="dim" style="margin-top:.5em">Tự động bán đồ đã nhặt</div><span class="chip${a.sell ? ' on' : ''}" data-a="autog" data-f="sell">${a.sell ? 'Đang bật' : 'Đang tắt'}</span>
+    ${a.sell ? `<div class="dim">Loại tự bán (loại khác được giữ lại)</div>${AT('sellKinds', KIND_CHIPS.filter(x => x[0] !== 'card'))}<div class="dim">Tự bán đến phẩm chất (cao hơn thì giữ)</div>${AU('sellMaxRi', rarList.slice(0, 6))}` : ''}
+    <div class="dim" style="margin-top:.5em">Tự động trang bị khi tốt hơn (so sánh tổng thể chỉ số)</div><span class="chip${a.equip ? ' on' : ''}" data-a="autog" data-f="equip">${a.equip ? 'Đang bật' : 'Đang tắt'}</span>
+    <div class="dim" style="margin-top:.7em">Tự bán và tự trang bị chỉ hoạt động khi Auto đang bật. Giữ nút Auto hoặc nhấn R để mở bảng này.</div>`; };
+  const cardSellModal = () => { const lst = cardSellList(G, CARDS, ui.cf), total = lst.reduce((a, cd) => a + cardValue(cd, CARDS[cd.t]), 0);
+    return `<h3>Bán thẻ theo bộ lọc</h3><div>Sẽ bán <b>${lst.length}</b> thẻ → <b style="color:#ffd98a">${fmt2(total)} vàng</b></div><div class="dim" style="margin:.4em 0">Không bán thẻ đang trang bị, đã khóa hoặc đã tiến hóa.</div>${lst.slice(0, 14).map(cd => `<div class="row"><div class="g"><b style="color:${rcol(cardRi(CARDS[cd.t]))}">${esc(CARDS[cd.t].name)}</b> <span class="dim">Lv.${cd.lv || 1} · ${'★'.repeat(cd.star) || '—'}</span></div><span>${fmt2(cardValue(cd, CARDS[cd.t]))}g</span></div>`).join('')}${lst.length > 14 ? `<div class="dim">… và ${lst.length - 14} thẻ khác</div>` : ''}<div class="acts"><button class="b red" data-a="csellgo" ${lst.length ? '' : 'disabled'}>Xác nhận bán</button></div>`; };
 
   function render() {
     if (!root.classList.contains('open')) return;
@@ -237,6 +281,21 @@ export function initBoard(G, hooks) {
   function act(a, d, ev) {
     const item = d.id && findItem(d.id), it = item && item.it;
     switch (a) {
+      case 'wide': ui.wide = !ui.wide; return render();
+      case 'cfr': ui.cf.rar = d.v === 'all' ? 'all' : +d.v; return render();
+      case 'cfk': ui.cf.kind = d.v; return render();
+      case 'cfl': ui.cf.lv = d.v; return render();
+      case 'au': G.set.auto[d.f] = ['sellMaxRi'].includes(d.f) ? +d.v : d.v; return commit();
+      case 'aut': { const arr = G.set.auto[d.f], v = ['pickRar'].includes(d.f) ? +d.v : d.v, i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); return commit(); }
+      case 'autog': G.set.auto[d.f] = !G.set.auto[d.f]; return commit();
+      case 'cardlock': { const c = G.cards.find(x => x.t === d.id); if (c) c.locked = !c.locked; return commit(); }
+      case 'cardsell': { const c = G.cards.find(x => x.t === d.id); if (!c) return; if (c.locked) return alert('Thẻ đang bị khóa.'); if (G.deck.includes(c.t)) return alert('Thẻ đang được trang bị. Hãy gỡ thẻ trước khi bán.');
+        const def = CARDS[c.t], v = cardValue(c, def); if (!ask(`Bán ${def.name} (Lv.${c.lv || 1}, ${c.star}★) với giá ${fmt2(v)} vàng? Thẻ sẽ biến mất khỏi bộ sưu tập.`)) return; if (c.evo && !ask('Thẻ đã TIẾN HÓA – xác nhận lần hai?')) return;
+        G.gold += v; G.cards = G.cards.filter(x => x !== c); return commit(); }
+      case 'csellmodal': ui.modal = 'csell'; ui.sel = null; return render();
+      case 'csellgo': { const lst = cardSellList(G, CARDS, ui.cf); if (!lst.length) return; const total = lst.reduce((a, cd) => a + cardValue(cd, CARDS[cd.t]), 0);
+        if (!ask(`Bán ${lst.length} thẻ → ${fmt2(total)} vàng?`)) return; if (lst.some(cd => cardRi(CARDS[cd.t]) >= 4) && !ask('Có thẻ Huyền thoại trở lên – xác nhận lần hai?')) return;
+        const set = new Set(lst); G.gold += total; G.cards = G.cards.filter(cd => !set.has(cd)); ui.modal = null; return commit(); }
       case 'close': return close();
       case 'tab': if (d.t === 'equip' || d.t) { ui.tab = d.t; ui.sel = null; ui.modal = null; } return render();
       case 'grp': ui.group = d.g; ui.page = 0; return render();
@@ -246,7 +305,7 @@ export function initBoard(G, hooks) {
       case 'sel': ui.sel = { t: 'item', id: d.id }; ui.modal = null; return render();
       case 'selcard': ui.tab = 'card'; return render();
       case 'modal': ui.modal = d.m; ui.sel = null; return render();
-      case 'veil': case 'closemodal': ui.modal = null; ui.sel = null; return render();
+      case 'veil': case 'closemodal': ui.modal = null; ui.sel = null; if (ui.direct) { ui.direct = false; return close(); } return render(); // mở từ phím tắt thì đóng luôn bảng
       case 'equip': if (it) { equip(G, it); ui.sel = null; } return commit();
       case 'unequip': unequip(G, d.slot); ui.sel = null; return commit();
       case 'lock': if (it) it.locked = !it.locked; return commit();
@@ -348,7 +407,7 @@ export function initBoard(G, hooks) {
   const fit = () => root.style.setProperty('--u', Math.max((root.clientWidth || 1000) / 100, 8)); // cỡ chữ tối thiểu ~7px trên điện thoại nhỏ
   window.addEventListener('resize', fit);
 
-  function open(tab, modal) { if (tab) ui.tab = tab; ui.modal = modal || null; root.classList.add('open'); fit(); hooks.onOpen && hooks.onOpen(); render(); }
+  function open(tab, modal) { if (tab) ui.tab = tab; ui.modal = modal || null; ui.direct = !!modal; root.classList.add('open'); fit(); hooks.onOpen && hooks.onOpen(); render(); }
   function close() { root.classList.remove('open'); ui.modal = null; ui.sel = null; hooks.onClose && hooks.onClose(); }
   function toggle() { root.classList.contains('open') ? close() : open(); }
   return { open, close, toggle, refresh: render, isOpen: () => root.classList.contains('open') };

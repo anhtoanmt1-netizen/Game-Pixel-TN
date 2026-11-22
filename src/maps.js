@@ -45,7 +45,7 @@ export function generateLayout(areaId, AREA, W, H) {
   const portals = [AREA.portal, AREA.portal2, ...(AREA.extra || [])].filter(Boolean);
   const keep = [ // điểm phải chừa trống: checkpoint, cổng, chỗ quái
     ...AREA.checkpoints.map(c => ({ x: c.x, y: c.y, r: 72 })), ...portals.map(p => ({ x: p.x, y: p.y, r: 80 })),
-    ...AREA.spawns.map(s => ({ x: s.x, y: s.y, r: MONSTERS[s.id].boss ? 150 : 60, boss: !!MONSTERS[s.id].boss })),
+    ...AREA.spawns.map(s => ({ x: s.x, y: s.y, r: MONSTERS[s.id].boss ? 150 : s.clone ? 26 : 90, boss: !!MONSTERS[s.id].boss })),
   ];
   if (arena) keep.push({ x: W / 2, y: H * 0.43, r: 420 });
   const nearKeep = (x, y, pad) => keep.some(k => Math.hypot(k.x - x, k.y - y) < k.r + pad);

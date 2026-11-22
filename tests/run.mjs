@@ -7,6 +7,8 @@ import { valid } from '../src/save.js';
 import { MAPS, DEFS, CLASS_PAL } from '../src/sprites.js';
 import { generateLayout, AREA_THEME, paintGround, GROUND_S, TCELL, T as TT, TEX_NAMES } from '../src/maps.js';
 import { stepSway } from '../src/wind.js';
+import * as AU from '../src/auto.js';
+import { DANGER } from '../src/data.js';
 import { THEMES, CELL } from '../src/themes.js';
 import fs from 'node:fs';
 import { buildNav, findPath, los } from '../src/nav.js';
@@ -268,7 +270,7 @@ try { // kiểm thử khói cho bảng giao diện với DOM giả (không có t
   globalThis.document = { head: mk(), body: mk(), createElement: () => mk(), getElementById: () => null, elementFromPoint: () => null };
   globalThis.window = { addEventListener() {}, confirm: () => true, prompt: () => '1' }; globalThis.alert = () => {}; globalThis.prompt = () => '1'; globalThis.confirm = () => true;
   const { initBoard } = await import('../src/board.js');
-  const G = newG(); G.classId = 'mage'; G.level = 30; G.gold = 99999; G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }; G.st = { kills: 0, boss: 0 }; G.ach = {}; G.pet = null; G.mat = { stone: 500 }; G.area = 'forest';
+  const G = newG(); G.classId = 'mage'; G.level = 30; G.gold = 99999; G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }; G.set.auto = AU.normAuto(); G.st = { kills: 0, boss: 0 }; G.ach = {}; G.pet = null; G.mat = { stone: 500 }; G.area = 'forest';
   for (let ri = 0; ri < 7; ri++) G.inv.push(I.genItem(20, ri), I.genItem(20, ri, 'weapon', 'dragon')); I.addCard(G, 'wolf'); I.addCard(G, 'sc_power'); G.q = { q1: { p: 5, done: true } };
   let changed = 0, traveled = null;
   const api = initBoard(G, { ps: () => ({ hp: 100, maxHp: 200 }), onChange: () => { changed++; }, msg() {}, travel: id => { traveled = id; }, toggleAuto() {} });
@@ -288,6 +290,14 @@ try { // kiểm thử khói cho bảng giao diện với DOM giả (không có t
   click({ a: 'grp', g: 'weapon' }); assert.ok(html().includes('data-from="inv"')); click({ a: 'clearf' });
   click({ a: 'sk', k: 'power' }); assert.equal(G.sk.power, 1);
   click({ a: 'travel', id: 'cave' }); assert.equal(traveled, 'cave');
+  click({ a: 'modal', m: 'auto' }); must('Cài đặt Auto'); must('Auto quanh vị trí'); must('Nhặt sau khi hết quái');
+  click({ a: 'au', f: 'range', v: 'far' }); assert.equal(G.set.auto.range, 'far'); click({ a: 'au', f: 'mode', v: 'around' }); assert.equal(G.set.auto.mode, 'around'); click({ a: 'au', f: 'pickWhen', v: 'after' }); assert.equal(G.set.auto.pickWhen, 'after');
+  click({ a: 'au', f: 'pickMode', v: 'both' }); must('Loại cần nhặt'); must('Phẩm chất cần nhặt'); click({ a: 'aut', f: 'pickKinds', v: 'weapon' }); assert.ok(!G.set.auto.pickKinds.includes('weapon')); click({ a: 'aut', f: 'pickRar', v: '0' }); assert.ok(!G.set.auto.pickRar.includes(0));
+  click({ a: 'autog', f: 'sell' }); must('Loại tự bán'); click({ a: 'au', f: 'sellMaxRi', v: '2' }); assert.equal(G.set.auto.sellMaxRi, 2); click({ a: 'autog', f: 'equip' }); assert.equal(G.set.auto.equip, true); click({ a: 'closemodal' });
+  click({ a: 'wide' }); must('Bảng chỉ số'); must('May mắn'); click({ a: 'wide' }); must('Sinh Lực');
+  click({ a: 'tab', t: 'card' }); must('Bán thẻ theo bộ lọc'); click({ a: 'cfr', v: '2' }); assert.equal(G.cards.length, 2); must('Thẻ Sói'); click({ a: 'cfr', v: 'all' }); click({ a: 'cfk', v: 'skill' }); assert.ok(!html().includes('Thẻ Sói')); click({ a: 'cfk', v: 'all' });
+  click({ a: 'cardlock', id: 'wolf' }); assert.equal(G.cards.find(c => c.t === 'wolf').locked, true); click({ a: 'csellmodal' }); must('Bán thẻ theo bộ lọc'); const g1 = G.gold; click({ a: 'csellgo' }); assert.ok(G.cards.some(c => c.t === 'wolf') && !G.cards.some(c => c.t === 'sc_power') && G.gold > g1, 'bán thẻ chưa khóa, giữ thẻ đã khóa');
+  click({ a: 'tab', t: 'equip' });
   assert.ok(changed > 5); pass++; console.log('  ok  bảng giao diện (DOM giả): mọi tab, hộp thoại và thao tác chính chạy đúng');
 } catch (e) { fail++; console.log('FAIL  bảng giao diện (DOM giả)\n      ' + (e.stack || e.message).split('\n').slice(0, 4).join('\n      ')); }
 
@@ -333,6 +343,55 @@ test('chỉ số may mắn: có dòng thuộc tính, bị chặn ở 100%, hiể
 test('tên trang bị tiếng Việt khớp icon', () => {
   assert.equal(INV.itemName({ slot: 'weapon', ri: 2 }, 'mage'), 'Trượng Hiếm'); assert.equal(INV.itemName({ slot: 'helmet', ri: 0 }, 'knight'), 'Mũ giáp Thường');
   assert.ok(INV.itemName({ slot: 'accessory', ri: 4, set: 'dragon' }, 'elf').includes('Sách phép'));
+});
+
+console.log('Auto, thẻ, định dạng, quái');
+test('định dạng số: tối đa 2 chữ số thập phân, dấu phẩy, phân cách nghìn', () => {
+  assert.equal(I.fmt2(1.78), '1,78'); assert.equal(I.fmt2(1.7849), '1,78'); assert.equal(I.fmt2(1.5), '1,5'); assert.equal(I.fmt2(1234.567), '1.234,57'); assert.equal(I.fmt2(2580750), '2.580.750'); assert.equal(I.fmt2(0), '0'); assert.equal(I.fmt2(-3.456), '-3,46'); assert.equal(I.fmt({ type: 'crit_rate', v: 3.456 }), '+3,46% Tỷ lệ chí mạng');
+});
+test('Auto: bộ lọc nhặt theo loại / phẩm chất / cả hai', () => {
+  const c = AU.normAuto({ pickMode: 'kinds', pickKinds: ['weapon', 'card'] }), w = { item: I.genItem(5, 1, 'weapon') }, r = { item: I.genItem(5, 5, 'ring') }, cd = { card: 'wolf' };
+  assert.ok(AU.passesPick(c, w) && !AU.passesPick(c, r) && AU.passesPick(c, cd));
+  const q = AU.normAuto({ pickMode: 'rarity', pickRar: [4, 5, 6] }); assert.ok(!AU.passesPick(q, w) && AU.passesPick(q, r));
+  const b = AU.normAuto({ pickMode: 'both', pickKinds: ['ring'], pickRar: [5] }); assert.ok(AU.passesPick(b, r) && !AU.passesPick(b, w)); assert.ok(AU.passesPick(AU.normAuto(), w));
+});
+test('Auto: tự bán theo loại + phẩm chất, giữ đồ khóa và đồ ngoài danh sách', () => {
+  const c = AU.normAuto({ sell: true, sellKinds: ['weapon', 'ring'], sellMaxRi: 2 }), a = I.genItem(5, 2, 'weapon'), b = I.genItem(5, 3, 'weapon'), r = I.genItem(5, 1, 'boots'), k = I.genItem(5, 0, 'ring'); k.locked = true;
+  assert.ok(AU.shouldSell(c, a)); assert.ok(!AU.shouldSell(c, b)); assert.ok(!AU.shouldSell(c, r)); assert.ok(!AU.shouldSell(c, k)); assert.ok(!AU.shouldSell(AU.normAuto({ sell: false }), a));
+});
+test('Auto: chọn mục tiêu theo phạm vi (gần/xa/toàn bản đồ) và chế độ quanh vị trí / tự do', () => {
+  const p = { x: 1000, y: 1000 }, en = [{ x: 1100, y: 1000 }, { x: 1500, y: 1000 }, { x: 2800, y: 1000 }];
+  assert.equal(AU.pickTarget(AU.normAuto({ range: 'near', mode: 'free' }), null, p, en), en[0]);
+  assert.equal(AU.pickTarget(AU.normAuto({ range: 'near', mode: 'free' }), null, p, en.slice(1)), null);
+  assert.equal(AU.pickTarget(AU.normAuto({ range: 'far', mode: 'free' }), null, p, en.slice(1)), en[1]);
+  assert.equal(AU.pickTarget(AU.normAuto({ range: 'map', mode: 'free' }), null, p, en.slice(2)), en[2]);
+  const anchor = { x: 400, y: 400 }; assert.equal(AU.pickTarget(AU.normAuto({ range: 'near', mode: 'around' }), anchor, p, en), null, 'quanh vị trí: chỉ đánh quái gần điểm neo');
+});
+test('Auto: chọn vật phẩm rơi theo bộ lọc, phạm vi, túi đầy; nhặt ngay / sau khi hết quái do hành vi quyết định', () => {
+  const p = { x: 0, y: 0 }, d1 = { x: 100, y: 0, item: I.genItem(5, 0, 'weapon') }, d2 = { x: 300, y: 0, item: I.genItem(5, 5, 'ring') }, d3 = { x: 50, y: 0, card: 'wolf' };
+  assert.equal(AU.pickDrop(AU.normAuto(), null, p, [d1, d2], false), d1);
+  assert.equal(AU.pickDrop(AU.normAuto({ pickMode: 'rarity', pickRar: [5] }), null, p, [d1, d2], false), d2);
+  assert.equal(AU.pickDrop(AU.normAuto(), null, p, [d1, d3], true), d3, 'túi đầy vẫn nhặt được thẻ, không nhặt trang bị');
+  assert.equal(AU.pickDrop(AU.normAuto({ mode: 'around', range: 'near' }), { x: 2000, y: 2000 }, p, [d1], false), null);
+});
+test('Tự trang bị: so sánh tổng thể chỉ số, chỉ mặc khi tốt hơn', () => {
+  const G = newG(); G.level = 20; const mageC = CLASSES.mage, worse = I.genItem(20, 0, 'weapon'), better = I.genItem(20, 5, 'weapon'); worse.main.v = 5; better.main.v = 900; better.affixes = [{ type: 'crit_rate', v: 20 }];
+  assert.equal(AU.bestSlot(G, better, mageC, CFG), 'weapon'); G.eq.weapon = better; assert.equal(AU.bestSlot(G, worse, mageC, CFG), null);
+  const r1 = I.genItem(20, 3, 'ring'), r2 = I.genItem(20, 5, 'ring'); r1.main.v = 100; r2.main.v = 800; r1.affixes = []; r2.affixes = []; G.eq.ring1 = r1; G.eq.ring2 = I.genItem(20, 3, 'ring'); G.eq.ring2.main.v = 50; G.eq.ring2.affixes = [];
+  assert.equal(AU.bestSlot(G, r2, mageC, CFG), 'ring2', 'thay nhẫn yếu hơn');
+  const hp = I.genItem(20, 4, 'armor'); hp.main = { type: 'hp', v: 5000 }; hp.affixes = []; assert.ok(AU.combatPower(I.derive(mageC, { ...G, eq: { ...G.eq, armor: hp } }, CFG)) > AU.combatPower(I.derive(mageC, G, CFG)));
+});
+test('thẻ bài: lọc theo bậc / loại / cấp; bán hàng loạt bỏ qua thẻ đang dùng, đã khóa, đã tiến hóa', () => {
+  const G = newG(); ['wolf', 'wolf_king', 'sc_power', 'r_scholar', 'spider'].forEach(t => I.addCard(G, t)); G.cards[0].lv = 12; G.deck = ['wolf_king']; G.cards[3].locked = true; G.cards[4].evo = true;
+  assert.equal(INV.filterCards(G, I.CARDS, { rar: 2 }).length, 4); assert.equal(INV.filterCards(G, I.CARDS, { kind: 'skill' }).length, 1); assert.equal(INV.filterCards(G, I.CARDS, { lv: 'c' }).length, 1);
+  const sl = INV.cardSellList(G, I.CARDS, {}); assert.deepEqual(sl.map(c => c.t).sort(), ['sc_power', 'wolf']);
+  assert.ok(INV.cardValue(G.cards[0], I.CARDS.wolf) > INV.cardValue({ lv: 1, star: 0 }, I.CARDS.wolf)); assert.ok(INV.cardValue({ lv: 1, star: 0, evo: true }, I.CARDS.wolf_king) > INV.cardValue({ lv: 1, star: 0 }, I.CARDS.wolf_king));
+});
+test('cổng: mọi khu vực có mức nguy hiểm 0–5; khu càng khó càng nguy hiểm', () => {
+  Object.keys(AREAS).forEach(id => assert.ok(DANGER[id] >= 0 && DANGER[id] <= 5, id)); assert.ok(DANGER.dark > DANGER.volcano && DANGER.volcano > DANGER.cave && DANGER.cave > DANGER.forest && DANGER.bossrush >= DANGER.dark);
+});
+test('quái nhiều gấp ~3–4 lần ở bản đồ thường, đi theo nhóm quanh điểm xuất hiện', () => {
+  ['forest', 'cave', 'volcano', 'ice', 'dark'].forEach(id => { const mobs = AREAS[id].spawns.filter(s => !MONSTERS[s.id].boss); assert.ok(mobs.length >= 42, `${id}: ${mobs.length}`); assert.ok(mobs.filter(s => s.clone).length >= mobs.length * 0.5, 'có nhóm'); });
 });
 
 console.log(`\n${pass} đạt, ${fail} lỗi`);
