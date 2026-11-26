@@ -22,14 +22,14 @@ export function initAudio(getSet, areaId) {
     const s = S();
     if (!ctx || ctx.state !== 'running' || !s.music) return;
     const sc = SCALES[area] || SCALES.forest;
-    if (n++ % 2 === 0) tone(110 * Math.pow(2, sc[(n >> 1) % sc.length] / 12) * (n % 16 < 8 ? 1 : 1.5), 0.4, 'sine', 0.05 * s.vol);
+    if (n++ % 2 === 0) tone(110 * Math.pow(2, sc[(n >> 1) % sc.length] / 12) * (n % 16 < 8 ? 1 : 1.5), 0.4, 'sine', 0.05 * (s.musicVol != null ? s.musicVol : s.vol));
   }, 420);
 }
 
 export function sfx(name) {
   const s = S();
   if (!ctx || ctx.state !== 'running' || !s.sfx) return;
-  const v = 0.15 * s.vol;
+  const v = 0.15 * (s.sfxVol != null ? s.sfxVol : s.vol);
   const fx = {
     // Lò Rèn: tụ năng lượng (quét lên), thành công (hợp âm), thất bại (rơi xuống), đột phá/thức tỉnh bậc cao (hợp âm dài), chuyển tab
     charge: () => { tone(120, 0.9, 'sawtooth', v * .6, 700); tone(180, 0.9, 'triangle', v * .5, 1000); },

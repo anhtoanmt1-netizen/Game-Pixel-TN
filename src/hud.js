@@ -31,7 +31,7 @@ export function initHud(stage, h) {
   document.head.appendChild(css);
   stage.insertAdjacentHTML('beforeend', `<div id="hud"><div id="hl"><div class="pl"><div class="lv"></div><div class="bar"><i></i></div><div class="tx"></div></div><div class="pl s"><div class="bar"><i></i></div><div class="tx"></div></div><div id="hinfo"></div></div>
    <div id="boss"><i></i><span></span></div><div id="toast"></div><div id="mapname"><b></b><small></small></div><canvas id="mini" width="214" height="140"></canvas>
-   <div id="hbtns"><button data-h="bag" title="Nhân vật & túi đồ (I)">${icon('bag','100%')}</button><button data-h="zoom" title="Tầm nhìn (Z)">${icon('zoom','100%')}</button><button data-h="auto" title="Auto battle (Q) · giữ để cài đặt (R)">${icon('auto','100%')}</button><button data-h="set" title="Cài đặt">${icon('gear','100%')}</button></div>
+   <div id="hbtns"><button data-h="bag" title="Nhân vật & túi đồ (I)">${icon('bag','100%')}</button><button data-h="zoom" title="Tầm nhìn (Z)">${icon('zoom','100%')}</button><button data-h="auto" title="Auto battle (Q) · giữ để cài đặt (R)">${icon('auto','100%')}</button><button data-h="set" title="Cài đặt">${icon('gear','100%')}</button><button data-h="mainmenu" title="Màn hình chính">${icon('mainMenu','100%')}</button></div>
    <div id="cds"><div id="cdk"><b></b><span>${icon('skill','70%')}</span></div><div id="cdd"><b></b><span>${icon('dodge','70%')}</span></div></div><div id="help">WASD đi · J/click đánh · 1 kỹ năng · Space né · Tab khóa · Q auto · Z tầm nhìn · M bản đồ nhỏ · I túi đồ</div></div>`);
   const $ = s => stage.querySelector(s);
   const hp = $('.pl:not(.s)'), xp = $('.pl.s'), mini = $('#mini'), mc = mini.getContext('2d'), toast = $('#toast');
@@ -66,6 +66,7 @@ export function initHud(stage, h) {
       $('#cdk b').style.setProperty('--p', s.cdSkill * 100 + '%'); $('#cdd b').style.setProperty('--p', s.cdDodge * 100 + '%');
       $('[data-h=auto]').classList.toggle('on', !!s.auto);
       mini.style.display = s.showMini ? '' : 'none';
+      mini.onclick = () => { if (h.showMapList) h.showMapList(); };
       if (!s.showMini || !staticMap) return;
       const { W, H } = staticMap, sx = 214 / W, sy = 140 / H;
       mc.drawImage(staticMap.c, 0, 0);

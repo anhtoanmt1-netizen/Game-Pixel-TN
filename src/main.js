@@ -9,6 +9,7 @@ import { buildNav, findPath, los } from './nav.js';
 import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
 import { CELL, FEET } from './chars.js';
+import { icon } from './icons.js';
 import { frameFor } from './charanim.js';
 import { buildMap, AREA_THEME, TEX_NAMES } from './maps.js';
 import { pickTarget, pickDrop } from './auto.js';
@@ -17,6 +18,126 @@ import { lootMethods } from './scene-loot.js';
 import { combatMethods } from './scene-combat.js';
 import { fxMethods } from './scene-fx.js';
 import { modesMethods } from './scene-modes.js';
+
+// ---------- Menu chính / danh sách nhân vật ----------
+let mainMenuEl = null, settingsEl = null;
+function openSettings(scene, msgFn) {
+  if (settingsEl) { settingsEl.style.display = 'flex'; return; }
+  const d = document.createElement('div');
+  d.id = 'settings-overlay';
+  d.style.cssText = "position:absolute;inset:0;z-index:120;background:#0b0d14ee;color:#f1e6cc;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Montserrat',sans-serif";
+  d.innerHTML = `
+    <div style="background:#161a28;border:1px solid #3d4a5e;border-radius:1em;padding:1.5em;box-shadow:0 0 2em #000a;min-width:340px">
+      <div style="font-weight:800;color:#ffe7b0;font-size:calc(var(--u,10)*1.5px);margin-bottom:1em;text-align:center">${icon('gear','1.4em')} Cài đặt</div>
+      <div style="margin:.5em 0">
+        <button class="b" style="width:100%;padding:.8em">${icon('skill','1.2em')} Âm thanh hiệu ứng: ${G.set.sfx ? 'Bật' : 'Tắt'}</button>
+        <button class="b" style="width:100%;padding:.8em;margin-top:.4em">${icon('music','1.2em')} Âm thanh nền: ${G.set.music ? 'Bật' : 'Tắt'}</button>
+      </div>
+      <div style="margin:.5em 0">${sliderHtml('Âm lượng hiệu ứng', 'sfxVol', 'skill')}</div>
+      <div style="margin:.5em 0">${sliderHtml('Âm lượng nền', 'musicVol', 'music')}</div>
+      <div style="margin:.5em 0">
+        <button class="b" style="width:100%;padding:.8em">${icon('atk','1.2em')} Chiến đấu liên tục: ${G.set.continuousCombat ? 'Bật' : 'Tắt'}</button>
+        <button class="b" style="width:100%;padding:.8em;margin-top:.4em">${icon('mainMenu','1.2em')} Màn hình chính: ${G.set.mainMenu ? 'Bật' : 'Tắt'}</button>
+      </div>
+      <div style="margin-top:1em;display:flex;gap:.5em">
+        <button id="btn-close-settings" style="flex:1;padding:.8em;background:#1b1f2e;color:#f1e6cc;border-radius:.6em;cursor:pointer;border:1px solid #4a5a6e">Đóng</button>
+      </div>
+    </div>
+  `;
+  const stage = document.getElementById('stage');
+  stage.appendChild(d);
+  settingsEl = d;
+
+  d.querySelectorAll('button').forEach(b => {
+    if (b.id === 'btn-close-settings') { b.onclick = () => { d.remove(); settingsEl = null; }; return; }
+    b.onclick = () => {
+      const label = b.querySelector('span') ? '' : b.textContent;
+      if (b.textContent.includes('Âm thanh hiệu ứng')) { G.set.sfx = !G.set.sfx; b.innerHTML = `${icon('skill','1.2em')} Âm thanh hiệu ứng: ${G.set.sfx ? 'Bật' : 'Tắt'}`; msgFn && msgFn('Âm thanh hiệu ứng: ' + (G.set.sfx ? 'BẬT' : 'TẮT')); }
+      else if (b.textContent.includes('Âm thanh nền')) { G.set.music = !G.set.music; b.innerHTML = `${icon('music','1.2em')} Âm thanh nền: ${G.set.music ? 'Bật' : 'Tắt'}`; msgFn && msgFn('Âm thanh nền: ' + (G.set.music ? 'BẬT' : 'TẮT')); }
+      else if (b.textContent.includes('Chiến đấu liên tục')) { G.set.continuousCombat = !G.set.continuousCombat; b.innerHTML = `${icon('atk','1.2em')} Chiến đấu liên tục: ${G.set.continuousCombat ? 'Bật' : 'Tắt'}`; msgFn && msgFn('Chiến đấu liên tục: ' + (G.set.continuousCombat ? 'BẬT' : 'TẮT')); }
+      else if (b.textContent.includes('Màn hình chính')) { G.set.mainMenu = !G.set.mainMenu; b.innerHTML = `${icon('mainMenu','1.2em')} Màn hình chính: ${G.set.mainMenu ? 'Bật' : 'Tắt'}`; msgFn && msgFn('Màn hình chính: ' + (G.set.mainMenu ? 'BẬT' : 'TẮT')); }
+      save(G);
+    };
+  });
+}
+function sliderHtml(label, key, iconName) {
+  const v = G.set[key] != null ? G.set[key] : (key === 'sfxVol' ? 0.8 : 0.6);
+  const pct = Math.round(v * 100);
+  return `<div style="margin:.4em 0">${icon(iconName || 'stats','1.2em')} <b>${label}</b>: ${pct}%<br><div class="rail hit" data-a="slider" data-k="${key}" data-min="0" data-max="1" data-step="0.05" style="position:relative;height:1em;background:#3d382d;border-radius:.5em;overflow:hidden;cursor:pointer;margin-top:.3em"><i style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:linear-gradient(90deg,#e1a64d,#8a5a1a);border-radius:.5em"></i><span style="position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:1em;height:1em;background:#fff;border-radius:50%;box-shadow:0 0 .6em #000;border:1px solid #fff"></span></div></div>`;
+}
+
+function openMainMenu(scene) {
+  if (mainMenuEl) { mainMenuEl.style.display = 'flex'; return; }
+  const d = document.createElement('div');
+  d.id = 'main-menu';
+  d.style.cssText = "position:absolute;inset:0;z-index:100;background:#0b0d14;color:#f1e6cc;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Montserrat',sans-serif;overflow:auto";
+  d.innerHTML = `
+    <h1 style="margin:0 0 1.5em;font-size:calc(var(--u,10)*2.2px);letter-spacing:.2em;color:#ffe7b0;text-shadow:0 0 1em #ffb44a88">ETERNAL PIXEL</h1>
+    <div style="display:flex;flex-direction:column;gap:.8em;max-width:600px;width:90%">
+      <div style="background:#161a28;border:1px solid #3d4a5e;border-radius:.8em;padding:1.2em;box-shadow:0 0 2em #000a">
+        <div style="margin-bottom:1em;font-weight:800;color:#ffe7b0;font-size:calc(var(--u,10)*1.3px)">Danh sách nhân vật (tối đa 4)</div>
+        <div id="char-list" style="display:flex;flex-direction:column;gap:.5em"></div>
+      </div>
+      <div style="margin-top:1em;display:flex;gap:.8em;justify-content:center">
+        <button id="btn-new" style="padding:1em 2em;font:700 1.1em Montserrat;sans-serif;background:#8a5a1a;color:#fff;border-radius:.8em;cursor:pointer;border:none;box-shadow:0 0 1em #8a5a1a88">Tạo nhân vật mới</button>
+        <button id="btn-settings" style="padding:1em 2em;font:700 1.1em Montserrat,sans-serif;background:#1b1f2e;color:#f1e6cc;border-radius:.8em;cursor:pointer;border:1px solid #4a5a6e">Cài đặt</button>
+        <button id="btn-quit" style="padding:1em 2em;font:700 1.1em Montserrat,sans-serif;background:#3a1a1a;color:#ffb0b0;border-radius:.8em;cursor:pointer;border:1px solid #6a3a3a">Thoát</button>
+      </div>
+    </div>
+  `;
+  const stage = document.getElementById('stage');
+  stage.appendChild(d);
+  mainMenuEl = d;
+
+  function renderChars() {
+    const list = d.querySelector('#char-list');
+    if (!G.chars || G.chars.length === 0) {
+      list.innerHTML = '<div style="color:#8a9a9e;font-style:italic;padding:1em">Chưa có nhân vật. Hãy tạo nhân vật đầu tiên.</div>';
+      return;
+    }
+    list.innerHTML = G.chars.map((c, i) => {
+      const active = c.id === G.activeCharId;
+      const cls = CLASSES[c.classId];
+      return `<button data-id="${c.id}" style="display:flex;align-items:center;gap:1em;padding:1em;background:${active?'#1a2a3e':'#121824'};color:${active?'#ffe7b0':'#c9d6dc'};border:1px solid ${active?'#8a5a1a':'#3d4a5e'};border-radius:.6em;cursor:pointer;text-align:left"><img src="assets/chars/${c.classId}_portrait.png" alt="" style="width:60px;height:60px;object-fit:cover;border-radius:.4em"><div><div style="font-weight:800">${esc(cls ? cls.name : '?')}</div><div style="font-size:.85em;opacity:.8">Cấp ${c.level} · ${new Date(c.createdAt).toLocaleDateString('vi-VN')}</div></div><span style="margin-left:auto;${active?'color:#6bff8a':'color:#666'}">${active?'Đang chơi':'Chọn để chơi'}</span></button>`;
+    }).join('');
+    list.querySelectorAll('button').forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.id;
+        const ch = G.chars.find(x => x.id === id);
+        if (!ch) return;
+        G.activeCharId = id;
+        G.classId = ch.classId;
+        CFG.classId = ch.classId;
+        G.level = ch.level || 1;
+        save(G).then(() => { d.remove(); mainMenuEl = null; scene.scene.resume(); });
+      };
+    });
+  }
+  renderChars();
+
+  d.querySelector('#btn-new').onclick = () => {
+    if (G.chars.length >= 4) { alert('Đã đạt giới hạn tối đa 4 nhân vật.'); return; }
+    import('./board.js').then(({ pickClass }) => {
+      pickClass(CLASSES).then(clsId => {
+        const id = 'char_' + Date.now();
+        G.chars.push({ id, classId: clsId, level: 1, createdAt: Date.now() });
+        G.activeCharId = id;
+        G.classId = clsId;
+        CFG.classId = clsId;
+        G.level = 1;
+        save(G).then(() => { d.remove(); mainMenuEl = null; scene.scene.resume(); });
+      });
+    });
+  };
+  d.querySelector('#btn-settings').onclick = () => {
+    // Mở bảng cài đặt overlay trên màn hình game
+    d.style.display = 'none';
+    openSettings(scene, t => this.msg(t));
+  };
+  d.querySelector('#btn-quit').onclick = () => { if(confirm('Thoát game?')) { window.close(); } };
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));}
+
 
 // GameScene = lõi cảnh (khởi tạo, người chơi, camera, HUD, vòng lặp). Phần còn lại tách thành module trong scene-*.js:
 //   scene-loot.js (vật phẩm rơi) · scene-combat.js (quái, boss, sát thương) · scene-fx.js (hiệu ứng hình ảnh) · scene-modes.js (chế độ chơi, nhiệm vụ)
@@ -119,7 +240,7 @@ class GameScene extends Phaser.Scene {
     this.board = initBoard(G, {
       ps: () => this.ps, msg: t => this.msg(t), toggleAuto: () => this.toggleAuto(), travel: id => this.travelTo(id),
       onChange: () => { this.applyStats(); this.syncPet(); this.applyZoom(); this.persist(); },
-      onOpen: () => this.scene.pause(), onClose: () => this.scene.resume(), sfx,
+      onOpen: () => { if (!G.set.continuousCombat) this.scene.pause(); }, onClose: () => { if (!G.set.continuousCombat) this.scene.resume(); }, sfx,
     });
     initAudio(() => G.set, G.area);
     this.syncPet();
@@ -159,11 +280,17 @@ class GameScene extends Phaser.Scene {
 
     // HUD là DOM trong khung 16:9 (hud.js); ở đây chỉ còn lớp đồ họa nằm trong thế giới
     this.gfx = this.add.graphics().setDepth(5000);
-    this.hudApi = initHud(document.getElementById('stage'), { bag: () => this.board.toggle(), zoom: () => this.cycleZoom(), auto: () => this.toggleAuto(), set: () => this.board.open('equip', 'set'), autoCfg: () => this.board.open('equip', 'auto') });
+    this.hudApi = initHud(document.getElementById('stage'), { bag: () => this.board.toggle(), zoom: () => this.cycleZoom(), auto: () => this.toggleAuto(), set: () => this.board.open('equip', 'set'), autoCfg: () => this.board.open('equip', 'auto'), mainmenu: () => openMainMenu(this), showMapList: () => this.board.open('equip', 'map') });
     this.hudApi.setMap({ W, H, theme: AREA_THEME[AREA_ID], blocks: built.layout.blocks, portals: this.portals, checkpoints: CHECKPOINTS });
     this.applyZoom();
     if (this.pendingMsg) this.hudApi.msg(this.pendingMsg);
     this.playSummon(this.p.x, this.p.y); // vừa vào bản đồ: được triệu hồi lên bệ đá
+
+    // Hiển thị menu chính nếu được bật và chưa có nhân vật đang chơi
+    if (G.set.mainMenu && mainMenuEl == null) {
+      openMainMenu(this);
+      this.scene.pause();
+    }
   }
 
   applyZoom() { this.cameras.main.setZoom({ near: 1.5, wide: 1.0, ultra: 0.7 }[G.set.zoom] || 1.5); } // gần / rộng / siêu rộng

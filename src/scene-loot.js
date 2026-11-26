@@ -18,7 +18,7 @@ export const lootMethods = {
   dropLoot(e) {
     const boss = e.d.boss, out = [], rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
     const n = boss ? 2 : (rift || Math.random() < 0.35 ? 1 : 0);
-    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), this.ps.luck), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined, CFG.classId) });
+    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), this.ps.luck, boss), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined, CFG.classId) });
     if (Math.random() < (boss ? 1 : 0.07)) out.push({ card: e.id });
     const extra = Object.keys(CARDS).filter(k => CARDS[k].kind); // thẻ kỹ năng / di vật
     if (Math.random() < (boss ? 0.6 : 0.03)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });

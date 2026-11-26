@@ -263,9 +263,29 @@ export function initBoard(G, hooks) {
     return `<h3>${ui.q.mode === 'sell' ? 'Bán nhanh' : 'Phân giải nhanh'}</h3><div class="dim">Đến độ hiếm</div>${chips(RARITY.slice(0, 6).map((r, i) => [i, r.name]), ui.q.maxRi, 'qri', 'v')}<div class="dim" style="margin-top:.6em">Loại (bỏ trống = tất cả)</div>${[['weapon', 'Vũ khí'], ['helmet', 'Mũ'], ['armor', 'Giáp'], ['gloves', 'Găng'], ['boots', 'Giày'], ['necklace', 'Dây chuyền'], ['ring', 'Nhẫn'], ['cloak', 'Áo choàng'], ['accessory', 'Phụ kiện']].map(([k, n]) => `<span class="chip${kinds.has(k) ? ' on' : ''}" data-a="qkind" data-k="${k}">${n}</span>`).join('')}
       <div style="margin-top:.8em">Sẽ ${ui.q.mode === 'sell' ? 'bán' : 'phân giải'} <b>${t.n}</b> món (không động tới đồ đã khóa) → <b style="color:#ffd98a">${ui.q.mode === 'sell' ? fmtNum(t.gold) + ' vàng' : t.stone + ' đá'}</b></div><div class="acts"><button class="b red" data-a="qgo" ${t.n ? '' : 'disabled'}>Xác nhận</button><button class="b" data-a="qmode">Chuyển sang ${ui.q.mode === 'sell' ? 'phân giải' : 'bán'}</button></div>`;
   }
-  const settingsModal = () => `<h3>Cài đặt</h3><div class="acts"><button class="b" data-a="modal" data-m="auto">Cài đặt Auto…</button>${[['sfx', 'Âm thanh'], ['music', 'Nhạc'], ['lowfx', 'Giảm hiệu ứng'], ['minimap', 'Bản đồ nhỏ']].map(([k, n]) => `<button class="b" data-a="set" data-k="${k}">${n}: ${G.set[k] ? 'Bật' : 'Tắt'}</button>`).join('')}<button class="b" data-a="set" data-k="vol">Âm lượng: ${Math.round(G.set.vol * 100)}%</button></div>
-    <h3 style="margin-top:1em">Tầm nhìn</h3><div class="acts">${[['near', 'Gần'], ['wide', 'Rộng'], ['ultra', 'Siêu rộng']].map(([k, n]) => `<button class="b${G.set.zoom === k ? '' : ''}" style="${G.set.zoom === k ? 'background:#8a5a1a' : ''}" data-a="zoomset" data-k="${k}">${n}</button>`).join('')}</div>
-    <h3 style="margin-top:1em">Sao lưu</h3><div class="acts"><button class="b" data-a="exp">Xuất backup</button><button class="b" data-a="imp">Nhập backup</button></div>`;
+  const slider = (label, key, min, max, step, unit, iconName) => {
+  const v = G.set[key] != null ? G.set[key] : (key === 'vol' ? 0.5 : 0.8);
+  const pct = Math.round(((v - min) / (max - min)) * 100);
+  return `<div class="row" style="margin:.5em 0"><div class="g" style="display:flex;align-items:center;gap:.6em">${icon(iconName || 'stats', '1.2em')} <b>${label}</b></div><div style="flex:1;max-width:200px"><div class="rail hit" data-a="slider" data-k="${key}" data-min="${min}" data-max="${max}" data-step="${step}" style="position:relative;height:1em;background:#3d382d;border-radius:.5em;overflow:hidden;cursor:pointer"><i style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:linear-gradient(90deg,#e1a64d,#8a5a1a);border-radius:.5em"></i><span style="position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:1em;height:1em;background:#fff;border-radius:50%;box-shadow:0 0 .6em #000;border:1px solid #fff"></span></div><div style="font-size:.78em;color:#a79d86;margin-top:.2em">${Math.round(v * 100)}${unit || '%'}</div></div></div>`;
+};
+
+const settingsModal = () => `<h3>${icon('gear', '1.4em')} Cài đặt</h3>
+<div class="acts" style="margin-bottom:.8em">
+  <button class="b" data-a="modal" data-m="auto">${icon('auto', '1.2em')} Cài đặt Auto…</button>
+  <button class="b" data-a="set" data-k="mainMenu">${icon('portal', '1.2em')} Màn hình chính: ${G.set.mainMenu ? 'Bật' : 'Tắt'}</button>
+  <button class="b" data-a="set" data-k="continuousCombat">${icon('atk', '1.2em')} Chiến đấu liên tục: ${G.set.continuousCombat ? 'Bật' : 'Tắt'}</button>
+</div>
+<h3 style="margin-top:1em">${icon('music', '1.3em')} Âm thanh</h3>
+<div class="acts">
+  <button class="b" data-a="set" data-k="sfx">${icon('skill', '1.2em')} Âm thanh hiệu ứng: ${G.set.sfx ? 'Bật' : 'Tắt'}</button>
+  <button class="b" data-a="set" data-k="music">${icon('music', '1.2em')} Âm thanh nền: ${G.set.music ? 'Bật' : 'Tắt'}</button>
+</div>
+${slider('Âm lượng hiệu ứng', 'sfxVol', 0, 1, 0.05, '%', 'skill')}
+${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
+<button class="b" data-a="set" data-k="lowfx">${icon('lowfx', '1.2em')} Giảm hiệu ứng: ${G.set.lowfx ? 'Bật' : 'Tắt'}</button>
+<button class="b" data-a="set" data-k="minimap">${icon('map', '1.2em')} Bản đồ nhỏ: ${G.set.minimap ? 'Bật' : 'Tắt'}</button>
+<h3 style="margin-top:1em">${icon('zoom', '1.3em')} Tầm nhìn</h3><div class="acts">${[['near', 'Gần'], ['wide', 'Rộng'], ['ultra', 'Siêu rộng']].map(([k, n]) => `<button class="b${G.set.zoom === k ? '' : ''}" style="${G.set.zoom === k ? 'background:#8a5a1a' : ''}" data-a="zoomset" data-k="${k}">${icon('zoom','1.1em')} ${n}</button>`).join('')}</div>
+<h3 style="margin-top:1em">${icon('save', '1.3em')} Sao lưu</h3><div class="acts"><button class="b" data-a="exp">${icon('save', '1.2em')} Xuất backup</button><button class="b" data-a="imp">${icon('save', '1.2em')} Nhập backup</button></div>`;
   const petsModal = () => `<h3>Thú đồng hành</h3>` + Object.entries(PETS).map(([k, p]) => { const ok = questDone(p.unlock), lv = (G.petLv && G.petLv[k]) || 1; return `<div class="row"><div class="g"><b>${p.name}</b> <span class="dim">Cấp ${lv}/10</span><small>${p.desc}${ok ? '' : ' · Khóa: hoàn thành nhiệm vụ ' + p.unlock}</small></div>${ok ? `<button class="b" data-a="pet" data-k="${k}">${G.pet === k ? 'Cất đi' : 'Mang theo'}</button><button class="b" data-a="plv" data-k="${k}">Nâng ${200 * lv}g</button>` : ''}</div>`; }).join('') +
     `<h3 style="margin-top:1em">Ngoại hình (chỉ thay hình ảnh)</h3><div class="acts">${LOOK_NAMES.map((n, i) => G.level >= LOOK_LV[i] ? `<button class="b" style="${lookStage(G) === i ? 'background:#8a5a1a' : ''}" data-a="look" data-k="${i}">${n}</button>` : `<span class="dim">${n}: Lv.${LOOK_LV[i]}</span>`).join('')}</div>`;
 
@@ -340,6 +360,7 @@ export function initBoard(G, hooks) {
       case 'rar': ui.rarity = d.v === 'all' ? 'all' : +d.v; ui.page = 0; return render();
       case 'pg': ui.page = Math.max(0, Math.min(pages() - 1, ui.page + +d.d)); return render();
       case 'rail': { const r = d.el.getBoundingClientRect(); ui.page = Math.max(0, Math.min(pages() - 1, Math.round((ev.clientY - r.top) / r.height * (pages() - 1)))); return render(); }
+      case 'touch-scroll': { /* xử lý vuốt trong túi đồ */ return; }
       case 'sel': ui.sel = { t: 'item', id: d.id }; ui.modal = null; return render();
       case 'selcard': ui.tab = 'card'; return render();
       case 'modal': ui.modal = d.m; ui.sel = null; return render();
@@ -365,10 +386,13 @@ export function initBoard(G, hooks) {
       case 'pet': G.pet = G.pet === d.k ? null : d.k; return commit();
       case 'plv': { G.petLv = G.petLv || {}; const lv = G.petLv[d.k] || 1; if (lv >= 10) return alert('Thú đã đạt cấp tối đa.'); const c = 200 * lv; if (G.gold < c) return alert(`Không đủ vàng (cần ${c}).`); G.gold -= c; G.petLv[d.k] = lv + 1; return commit(); }
       case 'look': G.look = +d.k; return commit();
-      case 'set': if (d.k === 'vol') G.set.vol = G.set.vol >= 1 ? 0.25 : +(G.set.vol + 0.25).toFixed(2); else G.set[d.k] = !G.set[d.k]; return commit();
+      case 'set': if (d.k === 'vol') G.set.vol = G.set.vol >= 1 ? 0.25 : +(G.set.vol + 0.25).toFixed(2); else if (['sfxVol','musicVol'].includes(d.k)) { /* slider handled separately */ } else G.set[d.k] = !G.set[d.k]; return commit();
+      case 'slider': { const k = d.k, min = +d.min, max = +d.max, step = +d.step; let v = G.set[k] != null ? G.set[k] : 0.5; if (ev) { const r = d.el.getBoundingClientRect(); let pct = (ev.clientX - r.left) / r.width; pct = Math.max(0, Math.min(1, pct)); v = min + pct * (max - min); v = Math.round(v / step) * step; } else v = Math.min(max, Math.max(min, v + step)); G.set[k] = +v.toFixed(2); return render(); }
       case 'zoomset': G.set.zoom = d.k; return commit();
       case 'zoom': G.set.zoom = { near: 'wide', wide: 'ultra', ultra: 'near' }[G.set.zoom || 'near']; hooks.msg && hooks.msg('Tầm nhìn: ' + { near: 'Gần', wide: 'Rộng', ultra: 'Siêu rộng' }[G.set.zoom]); return commit();
       case 'auto': hooks.toggleAuto && hooks.toggleAuto(); return close();
+      case 'continuousCombat': G.set.continuousCombat = !G.set.continuousCombat; hooks.msg && hooks.msg('Chiến đấu liên tục: ' + (G.set.continuousCombat ? 'BẬT' : 'TẮT')); return commit();
+      case 'mainMenu': G.set.mainMenu = !G.set.mainMenu; hooks.msg && hooks.msg('Màn hình chính: ' + (G.set.mainMenu ? 'BẬT' : 'TẮT')); return commit();
       case 'save': hooks.onChange && hooks.onChange(); hooks.msg && hooks.msg('Đã lưu tiến trình'); return;
       case 'craft': { const r = RECIPES[+d.k]; if (G.gold < r.gold || G.mat.stone < r.stone) return alert('Không đủ đá hoặc vàng.'); if (G.inv.length >= G.cap) return alert('Túi đồ đã đầy.');
         if (!ask(`Chế tạo ${r.name}? Chi phí ${r.stone} đá + ${r.gold} vàng.`)) return; G.gold -= r.gold; G.mat.stone -= r.stone; G.inv.push(genItem(G.level, r.ri, undefined, undefined, G.classId || CFG.classId)); return commit(); }
@@ -397,6 +421,20 @@ export function initBoard(G, hooks) {
     act(el.dataset.a, { ...el.dataset, el }, e);
   });
   board.addEventListener('wheel', e => { if (ui.tab === 'equip' && !ui.modal && !ui.sel) { e.preventDefault(); act('pg', { d: e.deltaY > 0 ? 1 : -1 }); } }, { passive: false });
+
+  // ---------- Vuốt cuộn túi đồ trên điện thoại ----------
+  let ts = { y: 0, t: 0, active: false };
+  board.addEventListener('pointerdown', e => {
+    if (ui.tab === 'equip' && !ui.modal && !ui.sel && e.target.closest('.igrid,.page')) {
+      ts = { y: e.clientY, t: Date.now(), active: true };
+    }
+  }, { passive: true });
+  board.addEventListener('pointermove', e => {
+    if (!ts.active || ui.tab !== 'equip' || ui.modal || ui.sel) return;
+    const dy = e.clientY - ts.y;
+    if (Math.abs(dy) > 15) { e.preventDefault(); ts.y = e.clientY; act('pg', { d: dy > 0 ? 1 : -1 }); }
+  }, { passive: false });
+  board.addEventListener('pointerup', () => { ts.active = false; });
 
   // ---------- kéo-thả (chuột và cảm ứng): giữ ~0,25s trên điện thoại để kéo ----------
   let drag = null, ghost = null, suppress = false;

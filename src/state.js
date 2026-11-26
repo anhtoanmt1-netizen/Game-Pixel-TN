@@ -7,11 +7,18 @@ import { sfx } from './audio.js';
 import { normAuto } from './auto.js';
 
 // Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
-export const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }, pet: null, look: null, petLv: {} }, await load() || {});
+export const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, sfxVol: 0.8, musicVol: 0.6, lowfx: false, zoom: 'near', minimap: true, continuousCombat: true, mainMenu: true }, pet: null, look: null, petLv: {}, chars: [], activeCharId: null }, await load() || {});
 if (!G.classId) { G.classId = await pickClass(CLASSES); await save(G); }
 CFG.classId = G.classId;
-G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true, ...G.set };
+G.set = { sfx: true, music: true, vol: 0.5, sfxVol: 0.8, musicVol: 0.6, lowfx: false, zoom: 'near', minimap: true, continuousCombat: true, mainMenu: true, ...G.set };
 G.set.auto = normAuto(G.set.auto); // cấu hình Auto (phạm vi, chế độ, nhặt đồ, tự bán, tự trang bị)
+
+// Khởi tạo danh sách nhân vật nếu chưa có
+if (!Array.isArray(G.chars)) G.chars = [];
+if (!G.activeCharId && G.classId) {
+  G.activeCharId = 'char_' + Date.now();
+  G.chars.push({ id: G.activeCharId, classId: G.classId, level: G.level, createdAt: Date.now() });
+}
 export const AREA = AREAS[G.area] || AREAS.forest;
 export const AREA_ID = AREAS[G.area] ? G.area : 'forest';
 export const CHECKPOINTS = AREA.checkpoints, SPAWNS = AREA.spawns;

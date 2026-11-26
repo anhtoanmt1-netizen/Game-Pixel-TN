@@ -60,13 +60,15 @@ export function genItem(L, ri, kind, set, cls) {
 }
 
 // Rơi đồ: bảng trọng số + bảo đảm (pity): sau 30 lần không ra Epic+ thì ép ra (GDD 29)
-export function rollRarity(G, minIdx = 0, luck = 0) {
+export function rollRarity(G, minIdx = 0, luck = 0, isBoss = false) {
   G.pity = (G.pity || 0) + 1;
   let ri = 0;
   if (G.pity >= 30) ri = 3;
   else {
     // May mắn nhân trọng số từ bậc Hiếm trở lên (bậc càng cao càng được lợi nhiều)
-    const w = RARITY.map((x, i) => x.w * (i >= 2 ? 1 + (luck / 100) * i : 1));
+    // Boss có hệ số may mắn cao hơn (x2) cho việc rơi đồ cao cấp
+    const bossMult = isBoss ? 2 : 1;
+    const w = RARITY.map((x, i) => x.w * (i >= 2 ? 1 + (luck / 100) * i * bossMult : 1));
     let r = Math.random() * w.reduce((a, b) => a + b, 0);
     for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) { ri = i; break; } }
   }

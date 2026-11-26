@@ -1,5 +1,5 @@
 // Lưu IndexedDB có phiên bản schema + bản sao lưu tự động (GDD mục 41–42).
-export const VER = 2;
+export const VER = 3;
 const DB = 'eternal-pixel', ST = 'save';
 const open = () => new Promise((res, rej) => {
   const r = indexedDB.open(DB, 1);
@@ -16,10 +16,23 @@ export const valid = d => d && typeof d.level === 'number' && Array.isArray(d.in
 
 // Nâng cấp dữ liệu lưu từ phiên bản cũ. Mỗi bước MIGRATIONS[n] đổi dữ liệu v(n) → v(n+1); thêm bước mới khi đổi cấu trúc và tăng VER.
 //  v1 → v2: Đột phá thành số bậc (true → 1), trang bị đã thức tỉnh có cấp thức tỉnh 1, ghi lớp nhân vật vào trang bị cũ.
+//  v2 → v3: Thêm cài đặt âm lượng riêng (sfxVol, musicVol), liên tục chiến đấu, màn hình chính, danh sách nhân vật.
 const MIGRATIONS = {
   1: d => {
     const fix = it => { if (!it) return; if (it.trans === true) it.trans = 1; if (it.awaken && it.awk == null) it.awk = 1; if (!it.cls && d.classId) it.cls = d.classId; };
     Object.values(d.eq || {}).forEach(fix); (d.inv || []).forEach(fix); return d;
+  },
+  2: d => {
+    d.set = d.set || {};
+    d.set.sfxVol = d.set.sfxVol != null ? d.set.sfxVol : 0.8;
+    d.set.musicVol = d.set.musicVol != null ? d.set.musicVol : 0.6;
+    d.set.continuousCombat = d.set.continuousCombat !== false;
+    d.set.mainMenu = d.set.mainMenu !== false;
+    if (!Array.isArray(d.chars)) {
+      d.chars = d.classId ? [{ id: 'char_' + Date.now(), classId: d.classId, level: d.level, createdAt: Date.now() }] : [];
+      d.activeCharId = d.chars.length ? d.chars[0].id : null;
+    }
+    return d;
   },
 };
 export function migrate(rec) {

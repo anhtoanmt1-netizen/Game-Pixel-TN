@@ -62,6 +62,10 @@ export const ICONS = {
   all: () => [[6,6],[24,6],[42,6],[6,24],[24,24],[42,24],[6,42],[24,42],[42,42]].map(([x,y],i)=>p(`M${x} ${y}H${x+16}V${y+16}H${x}Z`,F(['gold','steel','blue','green','violet','red','wood','cyan','ember'][i]),'rx="3"')).join(''),
   portal: () => `<circle cx="32" cy="32" r="26" fill="#1a1030" stroke="${INK}" stroke-width="2.4"/>` + l('M32 10 A22 22 0 1 1 10 32', '#9a5cf0', 6) + l('M32 20 A12 12 0 1 1 20 32', '#4ad8f0', 5) + `<circle cx="32" cy="32" r="4" fill="#fff"/>`,
   look: () => p('M32 6 C46 6 54 18 52 32 C52 46 44 58 32 58 C20 58 12 46 12 32 C10 18 18 6 32 6Z', F('dark')) + p('M16 26 C20 14 44 14 48 26 C44 36 20 36 16 26Z', F('violet')) + spark(32, 26, 7, F('white')),
+  lowfx: () => p('M10 24 H54 L48 32 L16 32Z', F('steel')) + p('M14 28 L26 38 L14 38Z', F('green')) + l('M30 28 L42 38', '#e2432f', 4),
+  mainMenu: () => `<rect x="8" y="8" width="48" height="8" rx="2" fill="${F('gold')}"/><rect x="8" y="22" width="48" height="8" rx="2" fill="${F('gold')}"/><rect x="8" y="36" width="48" height="8" rx="2" fill="${F('gold')}"/>`,
+  continuousCombat: () => p('M32 10 L58 30 L32 50 L6 30Z', F('ember')) + l('M20 22 L44 22', '#ffd34d', 3) + l('M32 12 L32 52', '#ffd34d', 3),
+  music: () => `<circle cx="32" cy="32" r="24" fill="none" stroke="${F('gold')}" stroke-width="3"/><path d="M16 22 Q24 14 32 22 Q40 14 48 22" fill="none" stroke="${F('gold')}" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="44" r="4" fill="${F('gold')}"/>`,
   // ---------- Chỉ số ----------
   heart: () => p('M32 56 C8 40 6 22 17 14 C24 9 30 13 32 19 C34 13 40 9 47 14 C58 22 56 40 32 56Z', F('red')) + hl('M16 20 C18 16 22 14 26 16', .8),
   atk: () => p('M52 4 L60 4 L60 12 L28 44 L20 36Z', F('steel')) + p('M12 38 L26 52 L18 60 L4 46Z', F('gold')) + hl('M54 8 L26 38', .7),
