@@ -1,27 +1,36 @@
 // Logic túi đồ thuần (kiểm thử được trong Node): icon theo loại/độ hiếm, lọc, sắp xếp, bán/phân giải nhanh, mặc đồ kéo-thả.
 import { RARITY, STONE, SETS } from './items.js';
 
-// Sprite icon: 6 cột = bậc màu của bộ ảnh (xám, lục, lam, tím, đỏ, vàng); 12 hàng = loại trang bị
-const ROW = { sword: 0, bow: 1, staff: 2, blades: 3, helmet: 4, boots: 5, ring: 6, cloak: 7, necklace: 8, gloves: 9, hat: 10, book: 11 };
-const WEAPON_BY_CLASS = { knight: 'sword', elf: 'bow', mage: 'staff', rogue: 'blades' };
-// 7 độ hiếm của game → 6 bậc màu của ảnh. Legendary = vàng (cột 5), Mythic = đỏ (cột 4), Ancient = đỏ + hiệu ứng lửa
-export const RCOL = [0, 1, 2, 3, 5, 4, 4];
+// Sprite icon (assets/ui/equip.png, dựng bởi tools/build_equip.py): EQUIP_COLS cột = bậc màu, mỗi hàng = một loại trang bị
+import { EQUIP_ROWS, EQUIP_COLS, EQUIP_CELL } from './equipicons.js';
+export { EQUIP_COLS, EQUIP_CELL };
+const ROW = Object.fromEntries(EQUIP_ROWS.map((k, i) => [k, i]));
+// Vũ khí và vật phẩm chuyên dụng của từng lớp (ô Phụ kiện = tay phụ): mỗi lớp có hình riêng, không dùng chung
+export const CLASS_GEAR = {
+  knight: { weapon: 'sword', accessory: 'shield', helmet: 'helmet' },
+  elf:    { weapon: 'bow', accessory: 'quiver', helmet: 'helmet' },
+  mage:   { weapon: 'book', accessory: 'orb', helmet: 'hat' },
+  rogue:  { weapon: 'blades', accessory: 'mask', helmet: 'helmet' },
+};
+// 7 độ hiếm của game ↔ 7 cột bậc màu của ảnh (cột 6 = Cổ đại, ánh lửa cam)
+export const RCOL = [0, 1, 2, 3, 5, 4, 6];
 export function iconKey(it, classId) {
-  if (it.slot === 'weapon') return WEAPON_BY_CLASS[it.wt || classId] || 'sword';
-  if (it.slot === 'helmet') return (it.wt || classId) === 'mage' ? 'hat' : 'helmet';
-  if (it.slot === 'accessory') return 'book';
-  if (it.slot === 'armor') return 'cloak'; // bộ icon chưa có giáp ngực: tạm dùng áo choàng
-  return it.slot === 'ring' ? 'ring' : it.slot; // boots, gloves, necklace, cloak
+  const g = CLASS_GEAR[it.cls || classId] || CLASS_GEAR.knight;
+  if (g[it.slot]) return g[it.slot];
+  return it.slot === 'ring' ? 'ring' : it.slot; // armor, gloves, boots, necklace, cloak dùng chung hình
 }
 export function iconPos(it, classId) {
   const r = ROW[iconKey(it, classId)] ?? 0, c = RCOL[Math.min(it.ri, 6)];
-  return { row: r, col: c, fire: it.ri === 6 };
+  return { row: r, col: c, fire: false };
 }
-// Style nền sprite theo %: sheet 6×12 ô
+// Style nền sprite theo %: sheet EQUIP_COLS × hàng
 export const iconStyle = (it, classId) => {
   const p = iconPos(it, classId);
-  return `background-position:${(p.col / 5) * 100}% ${(p.row / 11) * 100}%;`;
+  return `background-position:${(p.col / (EQUIP_COLS - 1)) * 100}% ${(p.row / (EQUIP_ROWS.length - 1)) * 100}%;`;
 };
+// Style nền cho một hình trong sheet theo tên hàng (vd 'ring') và cột bậc màu
+export const sheetStyle = (key, col = 5) => `background-position:${(col / (EQUIP_COLS - 1)) * 100}% ${((ROW[key] ?? 0) / (EQUIP_ROWS.length - 1)) * 100}%;`;
+export const classGear = (cid, slot) => (CLASS_GEAR[cid] || CLASS_GEAR.knight)[slot];
 export const glowColor = it => RARITY[Math.min(it.ri, 6)].color;
 
 // Nhóm loại cho thanh tab túi đồ
@@ -79,9 +88,15 @@ export function moveEq(G, from, to) { // kéo giữa hai ô trang bị (đổi n
 }
 
 // Tên hiển thị tiếng Việt, khớp với icon (vũ khí theo lớp nhân vật); không phụ thuộc tên cũ đã lưu
-const NOUN = { weapon: { mage: 'Trượng', knight: 'Kiếm', elf: 'Cung', rogue: 'Song đao' }, helmet: { mage: 'Mũ phù thủy', _: 'Mũ giáp' }, armor: 'Giáp', gloves: 'Găng tay', boots: 'Giày', necklace: 'Dây chuyền', ring: 'Nhẫn', cloak: 'Áo choàng', accessory: 'Sách phép' };
+const NOUN = {
+  weapon: { knight: 'Kiếm', elf: 'Cung', mage: 'Sách Phép', rogue: 'Song Đao' },
+  accessory: { knight: 'Khiên', elf: 'Túi Tên', mage: 'Cầu Ánh Sáng', rogue: 'Mặt Nạ Sát Thủ' },
+  helmet: { knight: 'Mũ Giáp', elf: 'Mũ Cung Thủ', mage: 'Mũ Phù Thủy', rogue: 'Mũ Sát Thủ' },
+  armor: { knight: 'Giáp Trụ', elf: 'Giáp Da', mage: 'Giáp Pháp Sư', rogue: 'Giáp Bóng Đêm' },
+  gloves: 'Găng Tay', boots: 'Giày', necklace: 'Dây Chuyền', ring: 'Nhẫn', cloak: 'Áo Choàng',
+};
 export function itemName(it, classId) {
-  let n = NOUN[it.slot] || it.slot; if (typeof n === 'object') n = n[it.wt || classId] || n._ || Object.values(n)[0];
+  let n = NOUN[it.slot] || it.slot; if (typeof n === 'object') n = n[it.cls || it.wt || classId] || n._ || Object.values(n)[0];
   const set = it.set && SETS[it.set];
   return `${n} ${RARITY[Math.min(it.ri, 6)].name}${set ? ' · ' + set.name : ''}`;
 }

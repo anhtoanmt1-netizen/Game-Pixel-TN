@@ -1,8 +1,9 @@
 # Tách sprite 4 lớp nhân vật từ bảng ảnh: chuẩn hóa tỉ lệ + căn chân, xuất atlas theo lớp + ảnh chân dung + src/chars.js
+from paths import ROOT, WORK, SRC as SRC_DIR, work, need
 import numpy as np, json
 from PIL import Image
 from scipy import ndimage as ndi
-SRC='/mnt/user-data/uploads/Bảng_sprite_RPG_bốn_lớp_nhân_vật__1_.png'; OUT='/home/claude/ETERNAL-PIXEL/'
+SRC=need(SRC_DIR+'Bảng_sprite_RPG_bốn_lớp_nhân_vật__1_.png'); OUT=ROOT
 im=Image.open(SRC).convert('RGBA'); A=np.array(im.getchannel('A')); fg=A>60
 lab,n=ndi.label(ndi.binary_dilation(fg,iterations=5)); comps=[]
 for i,sl in enumerate(ndi.find_objects(lab),1):
@@ -48,4 +49,4 @@ for r,cls in enumerate(CLS):
     a=Image.open(f'{OUT}assets/chars/{cls}.png'); js=json.load(open(f'{OUT}assets/chars/{cls}.json'))['frames']
     for k,(nm,f) in enumerate(js.items()):
         fx=f['frame']; sheet.alpha_composite(a.crop((fx['x'],fx['y'],fx['x']+CW,fx['y']+CH)),(k*CW,r*CH))
-sheet.convert('RGB').save('/tmp/ch/frames_preview.png')
+sheet.convert('RGB').save(work('ch')+'frames_preview.png')

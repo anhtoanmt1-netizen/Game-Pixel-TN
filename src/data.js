@@ -169,25 +169,45 @@ AREAS.bossrush = { name: 'Thử Thách Boss', mode: 'bossrush', tile: 'lava', ob
 AREAS.rift = { name: 'Khe Nứt Tinh Anh', mode: 'rift', tile: 'void', obst: 'voidobs', need: 'q6', checkpoints: mid, spawns: [], portal: back };
 AREAS.daily = { name: 'Phụ Bản Hàng Ngày', mode: 'daily', tile: 'ice', obst: 'iceobs', need: 'q2', checkpoints: mid, spawns: [], portal: back };
 
-// ---- Bản đồ lớn hơn một chút (khớp lưới ô 48px), quái thường nhân đôi, hồi sinh nhanh hơn
-CFG.world.w = 3072; CFG.world.h = 2048; // bản đồ rộng hơn (64×42 ô 48px)
-const KS = 1.68, seen = new Set(); // nhân tọa độ; bỏ qua đối tượng dùng chung giữa các khu vực
-const sc = o => { if (!o || seen.has(o)) return; seen.add(o); o.x = Math.round(o.x * KS); o.y = Math.round(o.y * KS); };
-for (const a of Object.values(AREAS)) {
-  a.checkpoints.forEach(sc); a.spawns.forEach(sc); [a.portal, a.portal2, ...(a.extra || [])].forEach(sc);
-  const base = a.spawns.filter(s => !MONSTERS[s.id].boss), cl = v => Math.max(160, Math.min(CFG.world.w - 160, v)), ch = v => Math.max(160, Math.min(CFG.world.h - 160, v));
-  const x2 = base.map(s => ({ id: s.id, x: cl(s.x + 150), y: ch(s.y + 110) }));                         // nhân đôi quái thường
-  const x3 = base.filter((s, i) => i % 2 === 0).map(s => ({ id: s.id, x: cl(s.x - 260), y: ch(s.y + 200) })); // thêm 50% cho vừa diện tích mới
-  a.spawns = [...a.spawns, ...x2, ...x3];
+// =====================================================================================================
+// HẬU XỬ LÝ KHU VỰC. Dữ liệu AREAS ở trên viết theo bản đồ nhỏ; các bước dưới chạy MỘT LẦN khi nạp, THEO ĐÚNG THỨ TỰ:
+//   1. scaleWorld     : bản đồ lớn hơn (3072×2048), nhân tọa độ mọi điểm lên 1,68 lần
+//   2. densifySpawns  : thêm 2 lượt quái thường (nhân đôi + 50%) cho vừa diện tích mới
+//   3. speedUpRespawn : quái hồi sinh nhanh hơn (×0,4)
+//   4. clusterSpawns  : mỗi điểm quái kéo theo 2–3 con đứng quanh (tổng quái thường ≈ ×3,5 so với dữ liệu gốc)
+// Đổi thứ tự hoặc chạy lặp sẽ làm sai số lượng/vị trí quái. Chỉ muốn chỉnh mật độ? Sửa hằng số bên dưới.
+// =====================================================================================================
+const WORLD_SCALE = 1.68, MARGIN = 160;                      // MARGIN: quái không xuất hiện sát mép bản đồ
+const clampTo = (v, max) => Math.max(MARGIN, Math.min(max - MARGIN, v));
+const isNormal = s => !MONSTERS[s.id].boss;
+CFG.world.w = 3072; CFG.world.h = 2048;                       // 64×42 ô 48px
+
+function scaleWorld() {
+  const seen = new Set();                                     // một số đối tượng dùng chung giữa các khu vực: chỉ nhân một lần
+  const sc = o => { if (!o || seen.has(o)) return; seen.add(o); o.x = Math.round(o.x * WORLD_SCALE); o.y = Math.round(o.y * WORLD_SCALE); };
+  for (const a of Object.values(AREAS)) { a.checkpoints.forEach(sc); a.spawns.forEach(sc); [a.portal, a.portal2, ...(a.extra || [])].forEach(sc); }
 }
-Object.values(MONSTERS).forEach(m => { m.respawn = Math.max(5, Math.round(m.respawn * 0.4)); }); // 20s → 8s, boss 60s → 24s
+function densifySpawns() {
+  const cx = v => clampTo(v, CFG.world.w), cy = v => clampTo(v, CFG.world.h);
+  for (const a of Object.values(AREAS)) {
+    const base = a.spawns.filter(isNormal);
+    const x2 = base.map(s => ({ id: s.id, x: cx(s.x + 150), y: cy(s.y + 110) }));                         // nhân đôi quái thường
+    const x3 = base.filter((s, i) => i % 2 === 0).map(s => ({ id: s.id, x: cx(s.x - 260), y: cy(s.y + 200) })); // thêm 50%
+    a.spawns = [...a.spawns, ...x2, ...x3];
+  }
+}
+function speedUpRespawn() { Object.values(MONSTERS).forEach(m => { m.respawn = Math.max(5, Math.round(m.respawn * 0.4)); }); } // 20s → 8s, boss 60s → 24s
+function clusterSpawns() {
+  for (const a of Object.values(AREAS)) {
+    const extra = [];
+    a.spawns.filter(isNormal).forEach((s, i) => { const n = i % 2 ? 2 : 3; for (let k = 0; k < n; k++) { const ang = (k / n) * Math.PI * 2 + i; extra.push({ id: s.id, x: clampTo(s.x + Math.cos(ang) * 90, CFG.world.w), y: clampTo(s.y + Math.sin(ang) * 90, CFG.world.h), clone: true }); } });
+    a.spawns = [...a.spawns, ...extra];
+  }
+}
+scaleWorld(); densifySpawns(); speedUpRespawn();
 
 // ---- Mức nguy hiểm của bản đồ đích (0 thấp … 5 cao): quyết định màu và độ nổi bật của cổng dịch chuyển ----
 export const DANGER = { hub: 0, forest: 1, daily: 1, cave: 2, tower: 2, ice: 3, volcano: 3, survival: 4, rift: 4, dark: 5, bossrush: 5 };
 
-// ---- Quái theo nhóm: mỗi chỗ quái xuất hiện kéo theo 2–3 con đứng quanh (tổng số quái thường ≈ x3,5 so với trước) ----
-for (const a of Object.values(AREAS)) {
-  const base = a.spawns.filter(s => !MONSTERS[s.id].boss), extra = [], cl = (v, m) => Math.max(160, Math.min(m - 160, v));
-  base.forEach((s, i) => { const n = i % 2 ? 2 : 3; for (let k = 0; k < n; k++) { const ang = (k / n) * Math.PI * 2 + i; extra.push({ id: s.id, x: cl(s.x + Math.cos(ang) * 90, CFG.world.w), y: cl(s.y + Math.sin(ang) * 90, CFG.world.h), clone: true }); } });
-  a.spawns = [...a.spawns, ...extra];
-}
+// ---- Quái theo nhóm (bước 4) ----
+clusterSpawns();

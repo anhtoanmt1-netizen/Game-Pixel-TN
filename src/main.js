@@ -1,39 +1,25 @@
-import { CFG, CLASSES, SKILLS, MONSTERS, AREAS, QUESTS, DANGER } from './data.js';
-import { calcDamage, rollCrit, rollDodge } from './combat.js';
+import { CFG, CLASSES, SKILLS } from './data.js';
 import { TOUCH } from './touch.js';
-import { lookStage, PETS, ACHS, RARITY, CARDS, derive, expNeed, genItem, rollRarity, addCard } from './items.js';
-import { save, load } from './save.js';
-import { initBoard, pickClass } from './board.js';
+import { PETS, ACHS, derive, expNeed } from './items.js';
+import { save } from './save.js';
+import { initBoard } from './board.js';
 import { initHud } from './hud.js';
-import { itemName, sellValue, iconPos } from './inv.js';
+import { EQUIP_CELL } from './inv.js';
 import { buildNav, findPath, los } from './nav.js';
 import { initAudio, sfx } from './audio.js';
 import { buildSprites } from './sprites.js';
-import { CHARS, CELL, FEET } from './chars.js';
+import { CELL, FEET } from './chars.js';
 import { frameFor } from './charanim.js';
 import { buildMap, AREA_THEME, TEX_NAMES } from './maps.js';
-import { stepSway } from './wind.js';
-import { normAuto, pickTarget, pickDrop, passesPick, shouldSell, bestSlot } from './auto.js';
+import { pickTarget, pickDrop } from './auto.js';
+import { G, AREA, AREA_ID, CHECKPOINTS, SPAWNS, dist, RUNE, FLOOR_MODES, recKey } from './state.js';
+import { lootMethods } from './scene-loot.js';
+import { combatMethods } from './scene-combat.js';
+import { fxMethods } from './scene-fx.js';
+import { modesMethods } from './scene-modes.js';
 
-// Trạng thái tiến trình người chơi (được lưu vào IndexedDB)
-const G = Object.assign({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, area: 'forest', sk: {}, mat: { stone: 0 }, st: { kills: 0, boss: 0 }, ach: {}, set: { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }, pet: null, look: null, petLv: {} }, await load() || {});
-if (!G.classId) { G.classId = await pickClass(CLASSES); await save(G); }
-CFG.classId = G.classId;
-G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true, ...G.set };
-G.set.auto = normAuto(G.set.auto); // cấu hình Auto (phạm vi, chế độ, nhặt đồ, tự bán, tự trang bị)
-const AREA = AREAS[G.area] || AREAS.forest;
-const AREA_ID = AREAS[G.area] ? G.area : 'forest';
-const CHECKPOINTS = AREA.checkpoints, SPAWNS = AREA.spawns;
-
-const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
-
-const scaled = (d, k) => ({ ...d, hp: Math.round(d.hp * k), atk: Math.round(d.atk * k), exp: Math.round(d.exp * k), gold: Math.round(d.gold * k) });
-
-const RUNE = { forest: 0x7fffd0, cave: 0x7fd0ff, volcano: 0xffb050, ice: 0xd8f4ff, dark: 0xd08aff };            // màu rune của bệ triệu hồi theo chủ đề
-const PORTAL_COL = [0xcfe6ff, 0x7be08a, 0x4ad0ff, 0xffc04a, 0xff5a3a, 0xff2a78];                               // màu cổng theo mức nguy hiểm 0→5
-const FLOOR_MODES = ['tower', 'bossrush', 'rift', 'daily'];
-const recKey = m => (m === 'tower' ? 'best' : 'rec_' + m);
-
+// GameScene = lõi cảnh (khởi tạo, người chơi, camera, HUD, vòng lặp). Phần còn lại tách thành module trong scene-*.js:
+//   scene-loot.js (vật phẩm rơi) · scene-combat.js (quái, boss, sát thương) · scene-fx.js (hiệu ứng hình ảnh) · scene-modes.js (chế độ chơi, nhiệm vụ)
 class GameScene extends Phaser.Scene {
   constructor() { super('game'); }
 
@@ -42,7 +28,7 @@ class GameScene extends Phaser.Scene {
     const t = AREA_THEME[AREA_ID];
     this.load.atlas('th_' + t, `assets/${t}.png`, `assets/${t}.json`);
     TEX_NAMES.forEach(n => this.load.image(`tr_${t}_${n}`, `assets/terrain/${t}_${n}.jpg`)); // texture địa hình liền mạch
-    this.load.spritesheet('icons', 'assets/ui/icons.png', { frameWidth: 128, frameHeight: 128 }); // icon trang bị cho vật phẩm rơi
+    this.load.spritesheet('icons', 'assets/ui/equip.png', { frameWidth: EQUIP_CELL, frameHeight: EQUIP_CELL }); // icon trang bị cho vật phẩm rơi
     const c = CFG.classId; this.load.atlas('ch_' + c, `assets/chars/${c}.png`, `assets/chars/${c}.json`); // sprite nhân vật
   }
 
@@ -98,6 +84,8 @@ class GameScene extends Phaser.Scene {
 
   create() {
     this.makeTextures();
+    // Icon trang bị là ảnh minh họa độ phân giải cao (không phải pixel art): lọc mịn để thu nhỏ không bị răng cưa
+    this.textures.get('icons').setFilter(Phaser.Textures.FilterMode.LINEAR);
     const { w: W, h: H } = CFG.world;
     this.physics.world.setBounds(0, 0, W, H);
 
@@ -131,11 +119,13 @@ class GameScene extends Phaser.Scene {
     this.board = initBoard(G, {
       ps: () => this.ps, msg: t => this.msg(t), toggleAuto: () => this.toggleAuto(), travel: id => this.travelTo(id),
       onChange: () => { this.applyStats(); this.syncPet(); this.applyZoom(); this.persist(); },
-      onOpen: () => this.scene.pause(), onClose: () => this.scene.resume(),
+      onOpen: () => this.scene.pause(), onClose: () => this.scene.resume(), sfx,
     });
     initAudio(() => G.set, G.area);
     this.syncPet();
     window.addEventListener('beforeunload', () => this.persist());
+    window.addEventListener('pagehide', () => this.persist()); // điện thoại thường không gọi beforeunload
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.persist(); });
     this.auto = false;
     this.playerDead = false;
     this.stats = { kills: 0, exp: 0, gold: 0 };
@@ -186,12 +176,6 @@ class GameScene extends Phaser.Scene {
 
   msg(t) { if (this.hudApi) this.hudApi.msg(t); else this.pendingMsg = t; }
 
-  popup(x, y, text, color = '#fff') {
-    if (G.set.lowfx && color === '#ffffff') return; // giảm hiệu ứng: bỏ số sát thương thường
-    const t = this.add.text(x, y, String(text), { fontFamily: 'Montserrat, sans-serif', fontStyle: 'bold', fontSize: '16px', color, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(5000);
-    this.tweens.add({ targets: t, y: y - 34, alpha: 0, duration: 700, onComplete: () => t.destroy() });
-  }
-
   // ---------- Tiến trình, rơi đồ, lưu ----------
   applyStats(full) {
     const s = this.ps, r = full ? 1 : s.hp / s.maxHp;
@@ -200,229 +184,6 @@ class GameScene extends Phaser.Scene {
   }
 
   persist() { save(G); }
-
-  gainExp(n) {
-    G.exp += Math.round(n * (1 + this.ps.exp_bonus / 100));
-    let up = false;
-    while (G.exp >= expNeed(G.level) && G.level < 100) { G.exp -= expNeed(G.level); G.level++; up = true; }
-    if (up) { sfx('level'); this.applyStats(); this.ps.hp = this.ps.maxHp; this.msg(`LÊN CẤP ${G.level}! (+1 điểm kỹ năng – mở Túi đồ I)`); this.persist(); }
-  }
-
-  dropLoot(e) {
-    const boss = e.d.boss, out = [], rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
-    const n = boss ? 2 : (rift || Math.random() < 0.35 ? 1 : 0);
-    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), this.ps.luck), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined) });
-    if (Math.random() < (boss ? 1 : 0.07)) out.push({ card: e.id });
-    const extra = Object.keys(CARDS).filter(k => CARDS[k].kind); // thẻ kỹ năng / di vật
-    if (Math.random() < (boss ? 0.6 : 0.03)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });
-    out.forEach(o => this.makeDrop(o, e.x + Phaser.Math.Between(-26, 26), e.y + Phaser.Math.Between(-20, 20)));
-  }
-
-  makeDrop(o, x, y) { // vật phẩm rơi: vầng sáng + (cột sáng, vòng sóng, hạt sáng) tăng dần theo phẩm chất, màu theo phẩm chất
-    const ri = o.card ? RARITY.findIndex(r => r.id === CARDS[o.card].rarity) : o.item.ri, col = parseInt(RARITY[ri].color.slice(1), 16), A = Phaser.BlendModes.ADD, parts = [], D = 3000;
-    const glow = this.add.image(x, y + 4, 'glow').setTint(col).setBlendMode(A).setDepth(D).setScale(0.6 + ri * 0.11).setAlpha(0.55); parts.push(glow);
-    this.tweens.add({ targets: glow, alpha: { from: 0.32, to: 0.8 }, scale: glow.scale * 1.18, duration: 1000 - ri * 90, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-    if (ri >= 3) { // Sử thi trở lên: cột sáng
-      const beam = this.add.image(x, y + 3, 'beam').setOrigin(0.5, 1).setTint(col).setBlendMode(A).setDepth(D).setScale(0.45 + (ri - 3) * 0.1, 0.65 + (ri - 3) * 0.22).setAlpha(0.5); parts.push(beam);
-      this.tweens.add({ targets: beam, alpha: { from: 0.28, to: 0.62 }, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-    }
-    if (ri >= 4) { // Huyền thoại trở lên: vòng sóng lan trên mặt đất
-      const ring = this.add.image(x, y + 6, 'ring').setTint(col).setBlendMode(A).setDepth(D).setScale(0.3, 0.14); parts.push(ring);
-      this.tweens.add({ targets: ring, scaleX: 1.0 + (ri - 4) * 0.25, scaleY: 0.45 + (ri - 4) * 0.1, alpha: { from: 0.9, to: 0 }, duration: 1500, repeat: -1 });
-    }
-    if (ri >= 5) parts.push(this.add.particles(x, y, 'spark', { tint: col, lifespan: 1000, speedY: { min: -55, max: -25 }, speedX: { min: -14, max: 14 }, scale: { start: 0.8, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: ri === 6 ? 90 : 170, blendMode: 'ADD' }).setDepth(D + 2)); // Thần thoại / Cổ đại: hạt sáng bay lên
-    let icon;
-    if (o.item) { const p = iconPos(o.item, CFG.classId); icon = this.add.image(x, y - 14, 'icons', p.row * 6 + p.col).setScale(0.38).setDepth(D + 1); if (ri === 6) icon.setTint(0xffc08a); }
-    else icon = this.add.rectangle(x, y - 14, 16, 22, 0x101820).setStrokeStyle(2, col).setDepth(D + 1);
-    this.tweens.add({ targets: icon, y: icon.y - 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' }); parts.push(icon);
-    this.drops.push({ x, y, ...o, ri, low: !o.card && ri <= 1, parts });
-  }
-
-  collect(d, autoMode) { // nhặt một vật phẩm; chế độ Auto có thể tự trang bị hoặc tự bán. Trả về false nếu túi đầy
-    const cfg = G.set.auto;
-    if (d.card) { addCard(G, d.card); this.msg(`Nhận thẻ: ${CARDS[d.card].name}`); return true; }
-    const it = d.item;
-    if (autoMode && cfg.equip && G.inv.length < G.cap) {
-      const slot = bestSlot(G, it, CLASSES[CFG.classId], CFG);
-      if (slot) { const old = G.eq[slot]; G.eq[slot] = it; if (old) G.inv.push(old); this.applyStats(); this.msg(`Tự trang bị: ${itemName(it, CFG.classId)}`); return true; }
-    }
-    if (autoMode && shouldSell(cfg, it)) { const v = sellValue(it); G.gold += v; this.msg(`Tự bán ${itemName(it, CFG.classId)}: +${v} vàng`); return true; }
-    if (G.inv.length >= G.cap) { this.msg('Túi đồ đã đầy!'); return false; }
-    G.inv.push(it); this.msg(`Nhặt: ${itemName(it, CFG.classId)}`); return true;
-  }
-
-  updateDrops() {
-    const k = this.keys, E = Phaser.Input.Keyboard.JustDown(k.E), cfg = G.set.auto;
-    if (Phaser.Input.Keyboard.JustDown(k.P)) { this.autoAll = !this.autoAll; this.msg(this.autoAll ? 'Nhặt: tự động mọi đồ' : 'Nhặt: tự động đồ thường, nhấn E cho đồ hiếm'); }
-    this.drops = this.drops.filter(d => {
-      if (this.playerDead || (dist(this.p, d) > 44 && !(this.pet && PETS[G.pet].magnet && dist(this.pet, d) < 60))) return true; // thú đồng hành cũng nhặt đồ
-      const ok = E || (this.auto ? passesPick(cfg, d) : (this.autoAll || d.low)); // Auto: theo bộ lọc nhặt; thủ công: theo quy tắc cũ
-      if (!ok || !this.collect(d, this.auto)) return true;
-      d.parts.forEach(pt => pt.destroy()); sfx('pick'); this.board.refresh(); this.persist();
-      return false;
-    });
-  }
-
-  // ---------- Quái vật ----------
-  spawn(id, x, y, summoned = false, scale = 0) {
-    const d = scale ? scaled(MONSTERS[id], scale) : MONSTERS[id];
-    const e = this.enemies.create(x, y, d.tex).setDepth(4).setCollideWorldBounds(true);
-    Object.assign(e, { d, id, hp: d.hp, home: { x, y }, state: 'idle', t: 0, cd: 0, wind: 0, dead: false, invuln: 0, summoned, phase: 0, enraged: false, aoeT: 3, wander: { x, y, t: 0 } });
-    if (d.boss) e.body.setSize(54, 54);
-    return e;
-  }
-
-  moveTo(e, tgt, speed) { this.physics.moveToObject(e, tgt, speed); }
-
-  updateEnemy(e, dt) {
-    if (!e.active || e.dead) return;
-    e.setDepth(10 + e.y); // đứng sau/trước cây theo vị trí y
-    const d = e.d, P = this.p, alive = !this.playerDead;
-    const dp = dist(e, P), dh = dist(e, e.home);
-    e.cd = Math.max(0, e.cd - dt);
-    if (e.invuln > 0) { e.invuln -= dt; e.setAlpha(0.6); } else e.setAlpha(1);
-    const speed = d.speed * (e.enraged ? 1.4 : 1);
-
-    if (d.boss) this.bossLogic(e, dt, alive);
-
-    switch (e.state) {
-      case 'idle': // tuần tra nhẹ quanh điểm gốc
-        e.wander.t -= dt;
-        if (e.wander.t <= 0) e.wander = { x: e.home.x + Phaser.Math.Between(-60, 60), y: e.home.y + Phaser.Math.Between(-60, 60), t: Phaser.Math.FloatBetween(1.5, 3.5) };
-        if (dist(e, e.wander) > 6) this.moveTo(e, e.wander, speed * 0.3); else e.body.setVelocity(0, 0);
-        if (alive && dp < d.detect) e.state = 'chase'; // Detect → Chase
-        break;
-      case 'chase':
-        if (!alive || (!d.boss && dh > d.leash)) { e.state = 'return'; break; }
-        if (dp <= d.attackRange) {
-          e.body.setVelocity(0, 0);
-          if (e.cd <= 0) { e.state = 'attack'; e.wind = 0.4; }
-        } else this.moveTo(e, P, speed);
-        break;
-      case 'attack': // có độ trễ ra đòn để người chơi kịp né
-        e.body.setVelocity(0, 0);
-        e.wind -= dt;
-        e.setTint(0xffaaaa);
-        if (e.wind <= 0) {
-          e.clearTint();
-          if (dist(e, P) <= d.attackRange + 14) this.hurtPlayer(d.atk, false, d.fx);
-          e.cd = d.attackCd; e.state = 'cooldown'; e.t = 0.3;
-        }
-        break;
-      case 'cooldown':
-        e.body.setVelocity(0, 0);
-        e.t -= dt;
-        if (e.t <= 0) e.state = 'chase';
-        break;
-      case 'return':
-        this.moveTo(e, e.home, speed * 1.2);
-        e.hp = Math.min(d.hp, e.hp + d.hp * 0.2 * dt);
-        if (dh < 8) { e.body.setVelocity(0, 0); e.state = 'idle'; }
-        else if (alive && !d.boss && dp < d.detect * 0.6 && dh < d.leash * 0.8) e.state = 'chase';
-        else if (alive && d.boss && dp < d.detect) e.state = 'chase';
-        break;
-    }
-  }
-
-  bossLogic(e, dt, alive) {
-    const d = e.d, ratio = e.hp / d.hp;
-    if (e.phase < 1 && ratio <= 0.6) {
-      e.phase = 1; e.invuln = 1.2;
-      this.msg(`${d.name} triệu hồi đàn con!`);
-      for (let i = 0; i < 2; i++) this.spawn(d.summon || 'wolf', e.x + (i ? 70 : -70), e.y + 40, true);
-    }
-    if (e.phase < 2 && ratio <= 0.3) {
-      e.phase = 2; e.enraged = true; e.invuln = 1.2;
-      this.msg(`${d.name} nổi cuồng!`);
-    }
-    if (!alive || e.state === 'idle' || e.state === 'return') return;
-    e.aoeT -= dt;
-    if (e.aoeT <= 0) { // tấn công diện rộng CÓ CẢNH BÁO
-      const n = e.enraged ? 3 : (d.aoeN || 1);
-      for (let i = 0; i < n; i++) {
-        const off = i ? Phaser.Math.Between(-130, 130) : 0;
-        this.telegraphs.push({ x: this.p.x + off, y: this.p.y + (i ? Phaser.Math.Between(-130, 130) : 0), r: 90, t: 0, dur: 1.0, dmg: d.atk * 1.8, fx: d.aoeFx });
-      }
-      e.aoeT = e.enraged ? (d.aoeCd2 || 2.5) : (d.aoeCd || 4);
-    }
-  }
-
-  updateTelegraphs(dt) {
-    this.telegraphs = this.telegraphs.filter(z => {
-      z.t += dt;
-      const k = Math.min(1, z.t / z.dur);
-      this.gfx.fillStyle(0xff2020, 0.15 + 0.25 * k).fillCircle(z.x, z.y, z.r);
-      this.gfx.lineStyle(2, 0xff5050, 0.9).strokeCircle(z.x, z.y, z.r * k);
-      this.gfx.lineStyle(2, 0xff5050, 0.9).strokeCircle(z.x, z.y, z.r);
-      if (z.t < z.dur) return true;
-      if (!this.playerDead && dist(this.p, z) <= z.r) this.hurtPlayer(z.dmg, true, z.fx);
-      return false;
-    });
-  }
-
-  // ---------- Sát thương ----------
-  hurtPlayer(raw, ignoreStatDodge, fx) {
-    const s = this.ps;
-    if (this.playerDead || s.iframes > 0) return; // đang lướt né = miễn sát thương
-    if (!ignoreStatDodge && rollDodge(s.dodge, CFG.dodgeCap)) { this.popup(this.p.x, this.p.y - 20, 'Né!', '#8ff'); return; }
-    const dmg = calcDamage(raw, 1, s.def);
-    s.hp = Math.max(0, s.hp - dmg);
-    this.popup(this.p.x, this.p.y - 20, dmg, '#ff6b6b'); sfx('hurt');
-    this.pv.setTint(0xff8888); this.time.delayedCall(80, () => { if (!this.chilled) this.pv.clearTint(); });
-    if (fx === 'slow') s.slowT = 2;
-    if (fx === 'freeze') { s.freezeT = 1; this.msg('Bị đóng băng!'); }
-    if (s.hp <= 0) this.playerDie();
-  }
-
-  playerDie() {
-    this.playerDead = true;
-    this.p.body.setVelocity(0, 0); this.vel.set(0, 0);
-    this.msg('Bạn đã bị hạ gục – hồi sinh tại điểm gần nhất (không mất đồ)');
-    this.time.delayedCall(1500, () => {
-      const cp = [...CHECKPOINTS].sort((a, b) => dist(a, this.p) - dist(b, this.p))[0];
-      this.p.setPosition(cp.x, cp.y); this.playSummon(cp.x, cp.y);
-      this.ps.hp = this.ps.maxHp; this.ps.iframes = 2;
-      this.playerDead = false; this.target = null;
-      if (AREA.mode === 'survival') { this.enemies.clear(true, true); this.wave = 0; this.waveT = 3; } // thua thì làm lại từ đợt 1
-      this.enemies.getChildren().forEach(e => { if (e.active && !e.dead && e.state !== 'idle') e.state = 'return'; });
-    });
-  }
-
-  hitEnemy(e, mult) {
-    if (!e.active || e.dead) return;
-    if (e.invuln > 0) { this.popup(e.x, e.y - 24, 'Miễn nhiễm', '#aaa'); return; }
-    const s = this.ps, crit = rollCrit(s.crit, CFG.critCap);
-    let dmg = calcDamage(s.matk, mult, e.d.def);
-    if (crit) dmg = Math.round(dmg * s.critDmg);
-    if (e.d.boss && s.boss_dmg) dmg = Math.round(dmg * (1 + s.boss_dmg / 100));
-    e.hp -= dmg;
-    if (s.lifesteal) s.hp = Math.min(s.maxHp, s.hp + Math.min(dmg * s.lifesteal / 100, s.maxHp * 0.03)); // trần hồi 3% HP/đòn
-    this.popup(e.x, e.y - 24, dmg, crit ? '#ffd34d' : '#ffffff'); sfx(crit ? 'crit' : 'hit');
-    if (e.state === 'idle') e.state = 'chase';
-    e.setTintFill(0xffffff); this.time.delayedCall(60, () => e.active && e.clearTint());
-    if (e.hp <= 0) this.killEnemy(e);
-  }
-
-  killEnemy(e) {
-    e.dead = true; e.body.setVelocity(0, 0);
-    this.stats.kills++; G.st.kills++; if (e.d.boss && !e.summoned) G.st.boss++; if (this.ps.heal_kill) this.ps.hp = Math.min(this.ps.maxHp, this.ps.hp + this.ps.maxHp * this.ps.heal_kill / 100); this.gainExp(e.d.exp); G.gold += Math.round(e.d.gold * (1 + this.ps.gold_bonus / 100)); this.dropLoot(e); if (!e.summoned) this.questKill(e.id);
-    this.popup(e.x, e.y - 40, `+${e.d.exp} EXP`, '#9f9');
-    if (this.target === e) this.target = null;
-    if (e.d.boss) this.msg('BOSS bị tiêu diệt!');
-    if (e.summoned) { e.destroy(); return; }
-    e.disableBody(true, true);
-    this.time.delayedCall(e.d.respawn * 1000, () => {
-      e.enableBody(true, e.home.x, e.home.y, true, true);
-      Object.assign(e, { hp: e.d.hp, state: 'idle', dead: false, phase: 0, enraged: false, invuln: 0, aoeT: 3 });
-    });
-  }
-
-  onProjHit(pr, e) {
-    if (!e.active || e.dead || pr.hit.has(e)) return;
-    pr.hit.add(e);
-    this.hitEnemy(e, pr.mult);
-    if (!pr.pierce) pr.destroy();
-  }
 
   // ---------- Người chơi ----------
   steerAuto(t) { // đi thẳng nếu thông thoáng, ngược lại đi theo đường A* đã kéo căng
@@ -435,52 +196,6 @@ class GameScene extends Phaser.Scene {
     let w = this.path[this.pi];
     while (this.pi < this.path.length - 1 && dist(p, w) < 20) w = this.path[++this.pi];
     return new Phaser.Math.Vector2(w.x - p.x, w.y - p.y).normalize();
-  }
-
-  makePedestal(x, y) { // bệ đá triệu hồi: vòng rune phát sáng nhịp thở + hạt sáng bay lên
-    const rune = RUNE[AREA_THEME[AREA_ID]] || 0x7fd0ff, A = Phaser.BlendModes.ADD;
-    this.add.image(x, y, 'pedestal').setOrigin(0.5, 0.52).setDepth(1.5);
-    const glow = this.add.image(x, y - 2, 'glow').setTint(rune).setBlendMode(A).setDepth(1.6).setScale(2.1, 0.9).setAlpha(0.5);
-    this.tweens.add({ targets: glow, alpha: { from: 0.28, to: 0.7 }, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-    this.add.particles(x, y - 4, 'spark', { tint: rune, lifespan: 1400, speedY: { min: -38, max: -18 }, x: { min: -34, max: 34 }, y: { min: -10, max: 10 }, scale: { start: 0.9, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: 220, blendMode: 'ADD' }).setDepth(1.7);
-    return { x, y };
-  }
-
-  playSummon(x, y) { // triệu hồi: cột sáng giáng xuống, hai vòng sóng lan ra, tia sáng tóe; nhân vật hiện dần
-    const rune = RUNE[AREA_THEME[AREA_ID]] || 0x7fd0ff, A = Phaser.BlendModes.ADD;
-    const beam = this.add.image(x, y + 6, 'beam').setOrigin(0.5, 1).setTint(rune).setBlendMode(A).setDepth(4000).setScale(3.2, 3.6).setAlpha(0.95);
-    this.tweens.add({ targets: beam, alpha: 0, scaleX: 0.8, duration: 1100, ease: 'Cubic.out', onComplete: () => beam.destroy() });
-    for (let k = 0; k < 2; k++) {
-      const ring = this.add.image(x, y, 'ring').setTint(rune).setBlendMode(A).setDepth(4000).setScale(0.3, 0.13).setAlpha(0.95);
-      this.tweens.add({ targets: ring, scaleX: 2.6, scaleY: 1.1, alpha: 0, delay: k * 220, duration: 800, ease: 'Cubic.out', onComplete: () => ring.destroy() });
-    }
-    const em = this.add.particles(x, y - 20, 'spark', { tint: rune, lifespan: 900, speed: { min: 40, max: 150 }, angle: { min: 200, max: 340 }, scale: { start: 1.1, end: 0 }, alpha: { start: 1, end: 0 }, gravityY: 60, blendMode: 'ADD', emitting: false }).setDepth(4001);
-    em.explode(28); this.time.delayedCall(1200, () => em.destroy());
-    this.summonT = 0.001; this.ps.iframes = Math.max(this.ps.iframes, 1.4); sfx('level');
-  }
-
-  makePortalFx(p) { // cổng xoáy: hai lớp xoáy ngược chiều + lõi sáng + hạt hút vào tâm; màu và độ lớn tăng theo mức nguy hiểm của bản đồ đích
-    const dest = AREAS[p.to], danger = DANGER[p.to] ?? 1, locked = !!(dest.need && !(G.q[dest.need] && G.q[dest.need].done));
-    const col = locked ? 0x808090 : PORTAL_COL[danger], sc = 0.5 + danger * 0.07, spd = 1 + danger * 0.18, A = Phaser.BlendModes.ADD, cy = p.y - 20;
-    const g = this.add.image(p.x, p.y, 'glow').setTint(col).setBlendMode(A).setDepth(1.2).setScale(4.8 * sc, 2.6 * sc).setAlpha(locked ? 0.25 : 0.55);
-    this.tweens.add({ targets: g, alpha: { from: locked ? 0.15 : 0.35, to: locked ? 0.3 : 0.75 }, duration: 1100 / spd, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-    const s1 = this.add.image(p.x, cy, 'swirl').setTint(col).setBlendMode(A).setDepth(3).setScale(sc * 0.8).setAlpha(locked ? 0.35 : 0.9);
-    const s2 = this.add.image(p.x, cy, 'swirl').setTint(0xffffff).setBlendMode(A).setDepth(3).setScale(sc * 0.5).setFlipX(true).setAlpha(locked ? 0.15 : 0.55);
-    this.tweens.add({ targets: s1, angle: 360, duration: 6500 / spd, repeat: -1 }); this.tweens.add({ targets: s2, angle: -360, duration: 3600 / spd, repeat: -1 });
-    const core = this.add.image(p.x, cy, 'glow').setTint(0xffffff).setBlendMode(A).setDepth(3).setScale(sc * 0.9);
-    this.tweens.add({ targets: core, scale: sc * 1.3, alpha: { from: 0.5, to: 1 }, duration: 800 / spd, yoyo: true, repeat: -1 });
-    if (!locked) this.add.particles(p.x, cy, 'spark', { tint: col, lifespan: 1000, emitZone: { type: 'edge', source: new Phaser.Geom.Circle(0, 0, 77 * sc), quantity: 1 }, moveToX: p.x, moveToY: cy, scale: { start: 1, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: Math.max(40, 150 - danger * 22), blendMode: 'ADD' }).setDepth(3);
-    this.add.text(p.x, p.y + 36 + danger * 3, `${dest.name}\n${'★'.repeat(Math.max(1, danger))}${locked ? '  🔒' : ''}`, { fontFamily: 'Montserrat, sans-serif', fontStyle: 'bold', fontSize: '12px', align: 'center', color: locked ? '#aab' : '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(3.1).setLineSpacing(1);
-  }
-
-  hardenBoss(b) { // Thử Thách Boss: đánh nhanh hơn, nhiều vòng cảnh báo hơn, hồi chiêu ngắn hơn
-    Object.assign(b.d, { attackCd: b.d.attackCd * 0.7, aoeN: (b.d.aoeN || 1) + 1, aoeCd: 2.6, aoeCd2: 1.6, speed: b.d.speed * 1.15, atk: Math.round(b.d.atk * 1.15) });
-  }
-
-  updateSway(t, dt) { // cỏ lay theo gió; rung và nghiêng ra khi nhân vật / quái đi qua
-    const v = this.cameras.main.worldView, actors = [this.p];
-    this.enemies.getChildren().forEach(e => { if (e.active && !e.dead) actors.push(e); });
-    for (const s of this.sways) { if (s.x < v.x - 60 || s.x > v.right + 60 || s.y < v.y - 40 || s.y > v.bottom + 120) continue; s.im.setRotation(stepSway(s, t, dt, actors)); }
   }
 
   startAtk(kind, aimX) { this.anim.atk = { kind, t: 0, dur: kind === 'atk' ? 0.28 : 0.42 }; this.anim.aim = aimX; }
@@ -497,14 +212,6 @@ class GameScene extends Phaser.Scene {
     if (chill !== this.chilled) { this.chilled = chill; if (chill) this.pv.setTint(0x9fd8ff); else this.pv.clearTint(); }
   }
 
-  drawAura() { // ngoại hình tiến hóa: chỉ là hiệu ứng hình ảnh
-    const st = lookStage(G); if (!st) return;
-    const cols = [0, 0x6fb6ff, 0x6ee7ff, 0xffd34d, 0xff4aff], c = cols[st], p = this.p;
-    const r = 18 + (st >= 4 ? 3 * Math.sin(this.time.now / 200) : 0);
-    this.gfx.lineStyle(2, c, 0.8).strokeCircle(p.x, p.y, r);
-    if (st >= 2) this.gfx.fillStyle(c, 0.12).fillCircle(p.x, p.y, r + 4);
-  }
-
   syncPet() {
     const def = PETS[G.pet], ok = def && G.q[def.unlock] && G.q[def.unlock].done;
     if (this.pet && (!ok || this.petId !== G.pet)) { this.pet.destroy(); this.pet = null; }
@@ -519,75 +226,6 @@ class GameScene extends Phaser.Scene {
     if (PETS[G.pet].shoot && !this.playerDead && (this.petT = (this.petT || 0) - dt) <= 0) {
       const t = this.nearestEnemy(300);
       if (t) { this.fire('bolt', 0.6, 420, false, t, this.pet); this.petT = 2; }
-    }
-  }
-
-  nextWave() {
-    const w = ++this.wave, tier = Math.min(4, Math.floor((w - 1) / 4)), sc = 1 + 0.15 * (w - 1);
-    const mobs = ['wolf', 'spider', 'imp', 'frost_wolf', 'shade'], n = this.enemies.countActive() > 170 ? 0 : Math.min(80, 5 * (2 + w)); // x5 quái, luôn truy đuổi
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, r = Phaser.Math.Between(300, 450);
-      const x = Phaser.Math.Clamp(this.p.x + Math.cos(a) * r, 60, CFG.world.w - 60), y = Phaser.Math.Clamp(this.p.y + Math.sin(a) * r, 60, CFG.world.h - 60);
-      const e = this.spawn(mobs[tier], x, y, true, sc);
-      e.d.leash = 99999; e.state = 'chase'; // quái sinh tồn luôn truy đuổi
-    }
-    G.st.surv = Math.max(G.st.surv || 0, w); G.gold += 15 * w; G.mat.stone += Math.floor(w / 2);
-    this.msg(`Đợt ${w}! +${15 * w} vàng`); this.persist();
-  }
-
-  nextFloor() {
-    const f = ++this.floor, m = AREA.mode;
-    const mobs = ['wolf', 'spider', 'imp', 'frost_wolf', 'shade'], bosses = ['wolf_king', 'spider_queen', 'fire_dragon', 'ice_king', 'ma_vuong'];
-    let tier = Math.min(4, Math.floor((f - 1) / 5)), sc = 1 + 0.2 * (f - 1), boss = f % 5 === 0, n = boss ? 4 : Math.min(12, 3 + f), elite = false;
-    if (m === 'bossrush') { /* khó hơn hẳn: hệ số 1,8 + tăng dần theo tầng và theo vòng */ tier = (f - 1) % 5; sc = 1.8 + 0.12 * (f - 1) + 0.35 * Math.floor((f - 1) / 5); boss = true; n = 0; } // lần lượt từng boss
-    if (m === 'rift') { sc = 2 + 0.3 * (f - 1); elite = true; } // quái tinh anh, độ khó cao
-    if (m === 'daily') { tier = Math.min(4, Math.floor(G.level / 20)); sc = 1 + 0.15 * (f - 1); boss = f === 5; n = boss ? 3 : 3 + f; }
-    for (let i = 0; i < n; i++) {
-      const e = this.spawn(mobs[tier], Phaser.Math.Between(CFG.world.w * 0.2, CFG.world.w * 0.82), Phaser.Math.Between(CFG.world.h * 0.15, CFG.world.h * 0.7), true, sc);
-      if (elite) e.setTint(0xffb0b0);
-    }
-    if (boss) {
-      const bb = this.spawn(bosses[tier], CFG.world.w / 2, CFG.world.h * 0.25, true, sc);
-      if (m === 'bossrush') { this.hardenBoss(bb); if (f > 5) this.hardenBoss(this.spawn(bosses[(tier + 4) % 5], CFG.world.w * 0.35, CFG.world.h * 0.3, true, sc * 0.85)); } // từ vòng 2: hai boss cùng lúc
-    }
-    this.msg(`Tầng ${f}${boss ? ' – BOSS' : ''}${elite ? ' (Tinh anh)' : ''}`);
-  }
-
-  questDone(id) { return !!(G.q[id] && G.q[id].done); }
-
-  questKill(id) {
-    QUESTS.forEach(q => {
-      if (q.target !== id || this.questDone(q.id) || (q.after && !this.questDone(q.after))) return;
-      const st = G.q[q.id] || (G.q[q.id] = { p: 0, done: false });
-      if (++st.p < q.n) return;
-      st.done = true; this.gainExp(q.reward.exp); G.gold += q.reward.gold;
-      this.msg(`Hoàn thành: ${q.name}${q.unlock ? ' – mở khóa ' + AREAS[q.unlock].name : ''}`);
-      this.persist();
-    });
-  }
-
-  questText() {
-    if (FLOOR_MODES.includes(AREA.mode)) return `Tầng ${this.floor} · Kỷ lục ${G.st[recKey(AREA.mode)] || 0}`;
-    if (AREA.mode === 'survival') return `Đợt ${this.wave} · Kỷ lục ${G.st.surv || 0}`;
-    const q = QUESTS.find(x => !this.questDone(x.id) && (!x.after || this.questDone(x.after)));
-    return q ? `Nhiệm vụ: ${q.name} ${(G.q[q.id] || { p: 0 }).p}/${q.n}` : 'Đã hoàn thành mọi nhiệm vụ';
-  }
-
-  updatePortal(dt) {
-    const pt = this.portals.find(p => dist(this.p, p) <= 40);
-    if (!pt || this.playerDead || this.traveling) { this.portalT = 0; return; }
-    const to = AREAS[pt.to];
-    if (to.need && !this.questDone(to.need)) { // khu vực chưa mở khóa
-      if (!this.lockMsg) {
-        this.lockMsg = true; this.msg(`${to.name} bị khóa: hoàn thành "${QUESTS.find(q => q.id === to.need).name}"`);
-        this.time.delayedCall(3000, () => { this.lockMsg = false; });
-      }
-      return;
-    }
-    this.portalT += dt;
-    if (this.portalT >= 1) {
-      this.traveling = true; G.area = pt.to; this.msg('Đang dịch chuyển...');
-      save(G).then(() => location.reload());
     }
   }
 
@@ -778,6 +416,8 @@ class GameScene extends Phaser.Scene {
     if (this.saveT > 10) { this.saveT = 0; this.persist(); } // tự động lưu
   }
 }
+
+Object.assign(GameScene.prototype, lootMethods, combatMethods, fxMethods, modesMethods);
 
 await Promise.race([document.fonts.load('700 14px Montserrat'), new Promise(r => setTimeout(r, 2500))]).catch(() => {}); // font Montserrat cho chữ trong game
 new Phaser.Game({

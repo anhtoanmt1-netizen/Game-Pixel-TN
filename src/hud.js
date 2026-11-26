@@ -1,7 +1,9 @@
 // HUD trên màn chơi: thanh HP/EXP, thông tin, boss, thông báo, bản đồ nhỏ, nút nhanh, hồi chiêu. Toàn bộ là DOM trong khung 16:9.
 import { fmt2 } from './items.js';
+import { icon, mountIconDefs } from './icons.js';
 const THEME_BG = { forest: '#2f5a2a', cave: '#393c47', volcano: '#4a2a1c', ice: '#c9dce8', dark: '#241a36' };
 export function initHud(stage, h) {
+  mountIconDefs();
   const css = document.createElement('style');
   css.textContent = `
   #hud{position:absolute;inset:0;pointer-events:none;font-family:'Montserrat',sans-serif;color:#f1e6cc;font-size:calc(var(--u,10)*.85px);z-index:20}
@@ -20,7 +22,7 @@ export function initHud(stage, h) {
   #mapname b{font-weight:800;font-size:.95em;color:#f1d9a0;text-shadow:0 0 .3em #000;overflow:hidden;text-overflow:ellipsis}#mapname small{font-weight:600;font-size:.72em;color:#bda77a}
   #mini{position:absolute;right:.9%;top:5.4%;width:16.5%;aspect-ratio:214/140;border:.18em solid #8b6a35;border-radius:.4em;background:#000;box-shadow:0 0 .8em #000}
   #hbtns{position:absolute;right:.9%;top:25.4%;display:flex;gap:.5em;pointer-events:auto}
-  #hbtns button{width:calc(var(--u,10)*3.3px);height:calc(var(--u,10)*3.3px);border:0;background:url(assets/ui/hud_icons.png) no-repeat;background-size:700% 100%;cursor:pointer;filter:drop-shadow(0 0 .3em #000);padding:0;border-radius:.4em}
+  #hbtns button{width:calc(var(--u,10)*3.3px);height:calc(var(--u,10)*3.3px);border:.16em solid #8b6a35;background:radial-gradient(circle,#2e261b,#14110c 75%);cursor:pointer;box-shadow:0 0 .6em #000,inset 0 0 .5em #000;padding:.22em;display:flex;align-items:center;justify-content:center;border-radius:.4em}
   #hbtns button:hover{filter:brightness(1.35) drop-shadow(0 0 .5em #ffb44a)}#hbtns button.on{outline:.15em solid #ffb44a}
   #cds{position:absolute;left:50%;bottom:2.2%;transform:translateX(-50%);display:flex;gap:1em}
   #cds div{width:calc(var(--u,10)*4px);height:calc(var(--u,10)*4px);border-radius:50%;border:.17em solid #8b6a35;background:#0c0a08cc;display:flex;align-items:center;justify-content:center;font-weight:800;position:relative;overflow:hidden}
@@ -29,8 +31,8 @@ export function initHud(stage, h) {
   document.head.appendChild(css);
   stage.insertAdjacentHTML('beforeend', `<div id="hud"><div id="hl"><div class="pl"><div class="lv"></div><div class="bar"><i></i></div><div class="tx"></div></div><div class="pl s"><div class="bar"><i></i></div><div class="tx"></div></div><div id="hinfo"></div></div>
    <div id="boss"><i></i><span></span></div><div id="toast"></div><div id="mapname"><b></b><small></small></div><canvas id="mini" width="214" height="140"></canvas>
-   <div id="hbtns"><button data-h="bag" title="Nhân vật & túi đồ (I)" style="background-position:50% 0"></button><button data-h="zoom" title="Tầm nhìn (Z)" style="background-position:100% 0"></button><button data-h="auto" title="Auto battle (Q) · giữ để cài đặt (R)" style="background-position:0 0"></button><button data-h="set" title="Cài đặt" style="background-position:83.33% 0"></button></div>
-   <div id="cds"><div id="cdk"><b></b><span>1</span></div><div id="cdd"><b></b><span>␣</span></div></div><div id="help">WASD đi · J/click đánh · 1 kỹ năng · Space né · Tab khóa · Q auto · Z tầm nhìn · M bản đồ nhỏ · I túi đồ</div></div>`);
+   <div id="hbtns"><button data-h="bag" title="Nhân vật & túi đồ (I)">${icon('bag','100%')}</button><button data-h="zoom" title="Tầm nhìn (Z)">${icon('zoom','100%')}</button><button data-h="auto" title="Auto battle (Q) · giữ để cài đặt (R)">${icon('auto','100%')}</button><button data-h="set" title="Cài đặt">${icon('gear','100%')}</button></div>
+   <div id="cds"><div id="cdk"><b></b><span>${icon('skill','70%')}</span></div><div id="cdd"><b></b><span>${icon('dodge','70%')}</span></div></div><div id="help">WASD đi · J/click đánh · 1 kỹ năng · Space né · Tab khóa · Q auto · Z tầm nhìn · M bản đồ nhỏ · I túi đồ</div></div>`);
   const $ = s => stage.querySelector(s);
   const hp = $('.pl:not(.s)'), xp = $('.pl.s'), mini = $('#mini'), mc = mini.getContext('2d'), toast = $('#toast');
   let staticMap = null, tt = null, last = {};

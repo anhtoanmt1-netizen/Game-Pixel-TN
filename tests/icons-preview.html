@@ -1,0 +1,8 @@
+<!doctype html><meta charset=utf-8><body style="background:#23252d;color:#ddd;font:12px sans-serif;margin:10px">
+<div id=g style="display:grid;grid-template-columns:repeat(9,1fr);gap:8px"></div>
+<script type=module>
+import {ICONS,icon,mountIconDefs} from '../src/icons.js';
+mountIconDefs();
+g.innerHTML=Object.keys(ICONS).map(k=>`<div style="text-align:center;background:#171920;border:1px solid #444;border-radius:6px;padding:6px">${icon(k,'88px')}<div>${k}</div><div style="display:flex;justify-content:center;gap:4px;margin-top:3px">${icon(k,'24px')}${icon(k,'16px')}</div></div>`).join('');
+document.title='ready';
+</script>

@@ -1,8 +1,9 @@
-# Tạo tài nguyên giao diện từ bộ ảnh: bảng chính 16:9 (đã xóa chữ/ô mẫu), sprite icon trang bị, layout.js
+# Tạo tài nguyên giao diện từ bộ ảnh: bảng chính 16:9 (đã xóa chữ/ô mẫu) và layout.js. Icon trang bị: xem build_equip.py
+from paths import ROOT, WORK, SRC as SRC_DIR, work, need
 import numpy as np, json, cv2, os
 from PIL import Image, ImageDraw
-SRC='/tmp/ui/x/Bộ giao diện và trang bị/'; OUT='/home/claude/ETERNAL-PIXEL/'
-board=np.array(Image.open('/tmp/ui/board_full.png').convert('RGB')).astype(np.float32); H,W,_=board.shape
+SRC=need(work('ui','x')+'Bộ giao diện và trang bị/'); OUT=ROOT
+board=np.array(Image.open(need(work('ui')+'board_full.png')).convert('RGB')).astype(np.float32); H,W,_=board.shape
 K=W/1456.0
 V=lambda x,y,w,h:[round(x*K),round(y*K),round(w*K),round(h*K)]
 rng=np.random.default_rng(7)
@@ -66,7 +67,7 @@ def synth(rect,sample,feather=7):
     print('synth mu',mu.round(1),'cv',round(cv,3))
 synth([1420,545,880,1100],(1424,560,18,1000))   # vùng ô trang bị: bỏ khung + kiếm mẫu
 synth([1408,1765,900,335],(1424,560,18,1000))   # thanh vật phẩm mẫu
-Image.fromarray(np.clip(board,0,255).astype(np.uint8)).save('/tmp/ui/board_clean.png')
+Image.fromarray(np.clip(board,0,255).astype(np.uint8)).save(work('ui')+'board_clean.png')
 im=Image.fromarray(np.clip(board,0,255).astype(np.uint8)).resize((2304,1296),Image.LANCZOS)
 im.save(OUT+'assets/ui/board.jpg',quality=88,optimize=True)
 # ---- sprite icon trang bị: tách từng icon theo hình dạng thật (ảnh gốc không chia đều), 6 cột (độ hiếm) x 12 hàng (loại) ----
@@ -91,8 +92,8 @@ for fn,names in (('Bộ biểu tượng trang bị RPG huyền ảo (1) (1).png'
 sheet=Image.new('RGBA',(128*6,128*len(rows)),(0,0,0,0))
 for r,(n,row) in enumerate(rows):
     for c,t in enumerate(row): sheet.paste(t,(c*128,r*128))
-sheet.save(OUT+'assets/ui/icons.png',optimize=True)
-json.dump([n for n,_ in rows],open('/tmp/ui/icon_rows.json','w'))
+sheet.save(work('ui')+'icons_legacy.png',optimize=True)  # sheet icon trang bị nay do tools/build_equip.py dựng (assets/ui/equip.png)
+json.dump([n for n,_ in rows],open(work('ui')+'icon_rows.json','w'))
 # ---- layout.js ----
 pct=lambda r:[round(r[0]/W*100,4),round(r[1]/H*100,4),round(r[2]/W*100,4),round(r[3]/H*100,4)]
 def conv(o): return {k:conv(v) for k,v in o.items()} if isinstance(o,dict) else ([conv(v) for v in o] if isinstance(o,list) and o and isinstance(o[0],list) else (pct(o) if isinstance(o,list) else o))
@@ -106,4 +107,4 @@ for k_,v in L.items():
     elif isinstance(v,list) and v and isinstance(v[0],list):
         for r in v: box(r,(255,255,0) if k_ in('igrid',) else (0,200,255))
     elif isinstance(v,list): box(v,(255,0,255))
-ov.save('/tmp/ui/overlay.png'); print('ok',len(L))
+ov.save(work('ui')+'overlay.png'); print('ok',len(L))

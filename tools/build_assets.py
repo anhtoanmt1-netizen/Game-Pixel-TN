@@ -1,10 +1,11 @@
+from paths import ROOT, WORK, SRC as SRC_DIR, work, need
 import numpy as np, json, os
 from PIL import Image
 from scipy import ndimage as ndi
 from skimage.color import rgb2hsv, hsv2rgb
-EX='/tmp/ex/'; OUT='/home/claude/ETERNAL-PIXEL/assets/'
+EX=work('ex'); OUT=ROOT+'assets/'
 comps=json.load(open(EX+'comps.json'))
-EXD={'tA':'/tmp/nt/tA/','tB':'/tmp/nt/tB/','tT':'/tmp/nt/tT/'}
+EXD={k:work('nt',k) for k in ('tA','tB','tT')}
 def load(src,i):
     im=Image.open(f'{EXD.get(src,EX+src+"/")}{i:03d}.png').convert('RGBA'); a=np.array(im)
     m=ndi.binary_erosion(a[...,3]>0,iterations=1)            # bỏ viền trắng do JPEG/khử nền
@@ -131,4 +132,4 @@ for th in SPEC:
             im=prep(th,cat,src,i); n=f'{cat}_{k}'; frames[n]=im; names.append([n,im.width,im.height])
         meta[cat]=names
     THEMES[th]=meta; print(th,len(frames),pack(frames,th),{c:len(v) for c,v in meta.items()})
-open('/home/claude/ETERNAL-PIXEL/src/themes.js','w',encoding='utf-8').write('// Sinh tự động bởi tools/build_assets.py từ các sheet ảnh môi trường. Mỗi mục: [tên frame, rộng, cao]\nexport const CELL = 48;\nexport const THEMES = '+json.dumps(THEMES,ensure_ascii=False)+';\n')
+open(ROOT+'src/themes.js','w',encoding='utf-8').write('// Sinh tự động bởi tools/build_assets.py từ các sheet ảnh môi trường. Mỗi mục: [tên frame, rộng, cao]\nexport const CELL = 48;\nexport const THEMES = '+json.dumps(THEMES,ensure_ascii=False)+';\n')

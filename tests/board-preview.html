@@ -1,0 +1,17 @@
+<!doctype html><meta charset=utf-8><base href="/"><title>board</title>
+<body style="margin:0;background:#000">
+<div id=stage style="position:relative;width:1280px;height:720px;overflow:hidden;--u:12.8"></div>
+<script type=module>
+import {initBoard} from './src/board.js';
+import {initHud} from './src/hud.js';
+import * as I from './src/items.js';
+const q=new URLSearchParams(location.search), cls=q.get('cls')||'mage';
+const G={level:42,exp:1200,gold:123456,inv:[],eq:{},cards:[],deck:[],pity:0,cap:300,q:{q1:{done:true},q2:{done:true}},sk:{},mat:{stone:777},st:{kills:5,boss:1},ach:{},classId:cls,area:'forest',set:{sfx:true,music:true,vol:.5,lowfx:false,zoom:'near',minimap:true,auto:{range:'near',mode:'free',pickWhen:'now',pickMode:'all',pickKinds:[],pickRar:[],sell:false,sellKinds:[],sellMaxRi:1,equip:false}},pet:null,petLv:{},look:null};
+const slots=['weapon','accessory','helmet','armor','gloves','boots','necklace','ring','cloak','ring'];
+slots.forEach((s,i)=>{const it=I.genItem(40,[6,5,4,3,2,5,4,3,1,0][i],s,undefined,cls);it.id='e'+i;it.enh=i%4*5;G.eq[i==9?'ring2':s==='ring'?'ring1':s]=it;});
+for(let i=0;i<30;i++){const it=I.genItem(30+i,Math.min(6,i%7),undefined,undefined,cls);it.id='i'+i;G.inv.push(it);}
+window.G=G;
+const board=initBoard(G,{ps:()=>({hp:300,maxHp:400}),msg(){},toggleAuto(){},travel(){},onChange(){},sfx(){}});
+initHud(document.getElementById('stage'),{bag(){board.toggle()},zoom(){},auto(){},set(){},autoCfg(){}});
+window.board=board; board.open(); window.ready=true;
+</script>

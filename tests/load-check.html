@@ -1,0 +1,13 @@
+<!doctype html><meta charset=utf-8><base href="/"><title>load</title>
+<body style="margin:0;background:#000"><div id=stage style="position:relative;width:1280px;height:720px"><div id=game></div><div id=touch><div id=stick><div id=knob></div></div><button id=bAtk></button><button id=bSkill></button><button id=bDodge></button><button id=bAuto></button></div></div>
+<script>
+// Phaser giả: chỉ để kiểm tra mọi module nạp và liên kết được (không chạy game)
+window.__log=[];
+window.Phaser={AUTO:0,Scene:class{constructor(k){this.k=k}},Game:class{constructor(c){window.__game=c}},Scale:{FIT:1,CENTER_BOTH:1},Math:{Distance:{Between:(a,b,c,d)=>Math.hypot(c-a,d-b)},Clamp:(v,a,b)=>Math.min(b,Math.max(a,v)),Between:(a,b)=>a},Physics:{Arcade:{}},Display:{Color:{}},Geom:{},Utils:{},Input:{Keyboard:{KeyCodes:{}}}};
+</script>
+<script type=module>
+import {save} from './src/save.js';
+await save({level:1,exp:0,gold:0,inv:[],eq:{},cards:[],deck:[],classId:'mage'});
+try { await import('./src/main.js'); window.__log.push('MAIN_OK'); } catch(e){ window.__log.push('MAIN_ERR '+e.message); }
+window.ready=true;
+</script>

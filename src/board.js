@@ -1,9 +1,11 @@
 // Bảng giao diện chính 16:9: ảnh nền do bạn cung cấp (đã xóa chữ/ô mẫu) + các lớp tương tác đặt theo % của ảnh.
 import { LAYOUT as L } from './layout.js';
-import { fmt2, RARITY, SLOT_NAME, LABEL, BONUS_LABEL, TYPE_VN, KIND_VN, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, awakenCost, rollAwaken, fmtAw, TRANS, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, rerollAffix, derive, expNeed, RESONANCE } from './items.js';
+import { fmt2, RARITY, SLOT_NAME, LABEL, BONUS_LABEL, TYPE_VN, KIND_VN, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, fmtAw, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, derive, expNeed, RESONANCE, itemLines, awkLv, trTier, CLASS_FX } from './items.js';
 import { CLASSES, CFG, AREAS, QUESTS, SKILLS, MONSTERS } from './data.js';
-import { cardValue, cardRi, CARD_LV, filterCards, cardSellList, itemName, iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
+import { sheetStyle, classGear, cardValue, cardRi, CARD_LV, filterCards, cardSellList, itemName, iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
 import { exportJSON, importJSON } from './save.js';
+import { createForge, MODES } from './forge.js';
+import { icon, mountIconDefs, statIcon } from './icons.js';
 import { KIND_CHIPS } from './auto.js';
 
 const TABS = [['equip', 'MẶC ĐỒ'], ['skill', 'KỸ NĂNG'], ['card', 'THẺ BÀI'], ['quest', 'NHIỆM VỤ'], ['map', 'BẢN ĐỒ']];
@@ -37,8 +39,16 @@ const CSS = `
 #ui .cell{border:.12em solid transparent;border-radius:.2em;cursor:grab}
 #ui .cell.f{box-shadow:inset 0 0 1.1em var(--c)}
 #ui .cell.sel{outline:.18em solid #ffe08a;outline-offset:-.12em}
-#ui .ic{position:absolute;inset:5%;background:url(assets/ui/icons.png) no-repeat;background-size:600% 1200%;pointer-events:none}
-#ui .ic.fire{filter:hue-rotate(-28deg) saturate(1.5) brightness(1.15) drop-shadow(0 0 .35em #ff7a1a)}
+#ui .ic{position:absolute;inset:3%;background:url(assets/ui/equip.png) no-repeat;background-size:700% 1700%;pointer-events:none;filter:drop-shadow(0 .1em .15em #000a)}
+#ui .ei{display:inline-block;vertical-align:middle;flex:none}
+#ui .ovl{position:absolute;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:1}
+#ui .ovl .ei{filter:drop-shadow(0 .08em .12em #000c)}
+#ui .ovl.dsk{background:radial-gradient(circle,#2a2218 0%,#14110c 70%);border-radius:50%}
+#ui .ovl.dmd{background:radial-gradient(circle,#2a2218 0%,#14110c 72%);clip-path:polygon(50% 2%,98% 50%,50% 98%,2% 50%)}
+#ui .ovl.rct{background:linear-gradient(160deg,#1d1a14,#111010);border-radius:.25em}
+#ui .forgebtns{display:grid;grid-template-columns:repeat(4,1fr);gap:.5em;margin-top:.8em}
+#ui .forgebtns .fb{display:flex;flex-direction:column;align-items:center;gap:.25em;padding:.55em .3em;border:.1em solid var(--fc);border-radius:.5em;background:linear-gradient(180deg,color-mix(in srgb,var(--fc) 22%,#14110a),#14110a);color:#f3e6c4;font:700 .82em Montserrat,sans-serif;cursor:pointer;transition:all .2s}
+#ui .forgebtns .fb:hover{box-shadow:0 0 1em var(--fc);transform:translateY(-.15em)}#ui .forgebtns .fb small{font-weight:600;color:#a99c80;font-size:.85em}#ui .forgebtns .fb.off{opacity:.45}
 #ui .bd{position:absolute;pointer-events:none;font-size:calc(var(--u)*.7px);font-weight:800;text-shadow:0 0 .3em #000,0 0 .3em #000}
 #ui .ds{border:.14em solid #5b5547;background:#0f1114;border-radius:.25em;cursor:pointer;font-size:calc(var(--u)*.66px);line-height:1.15;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#7d7766;font-weight:600;padding:.2em}
 #ui .ds.f{border-color:var(--c);color:#f0e6d0;box-shadow:inset 0 0 .9em var(--c)}
@@ -81,6 +91,7 @@ export function initBoard(G, hooks) {
   const root = document.createElement('div'); root.id = 'ui'; root.innerHTML = '<div class="board"></div>';
   (document.getElementById('stage') || document.body).appendChild(root);
   const board = root.firstChild;
+  mountIconDefs();
   const ui = { tab: 'equip', page: 0, group: 'all', rarity: 'all', sort: 'new', sel: null, modal: null, q: { mode: 'sell', maxRi: 1, kinds: new Set() }, text: '', cf: { rar: 'all', kind: 'all', lv: 'all' }, wide: false, direct: false };
   const cls = () => CLASSES[G.classId || CFG.classId];
   const ps = () => hooks.ps ? hooks.ps() : { hp: 1, maxHp: 1 };
@@ -90,9 +101,11 @@ export function initBoard(G, hooks) {
   const pages = () => Math.max(1, Math.ceil((list().length + 1) / PER_PAGE));
   const unlocked = id => !AREAS[id].need || !!(G.q[AREAS[id].need] && G.q[AREAS[id].need].done);
   const questDone = id => !!(G.q[id] && G.q[id].done);
+  // Lò Rèn: bảng cường hóa / đổi dòng / thức tỉnh / đột phá (thay các hộp confirm/alert/prompt cũ)
+  const forge = createForge(root, { G, classId: () => G.classId || CFG.classId, find: findItem, commit: () => commit(), sfx: n => hooks.sfx && hooks.sfx(n), onClose: () => render() });
 
   // ---------- phần dựng HTML ----------
-  const iconHtml = it => `<div class="ic${iconPos(it, G.classId).fire ? ' fire' : ''}" style="${iconStyle(it, G.classId)}"></div>`;
+  const iconHtml = it => `<div class="ic" style="${iconStyle(it, G.classId)}"></div>`;
   const badges = it => (it.enh ? `<span class="bd" style="right:6%;top:2%;color:#ffe08a">+${it.enh}</span>` : '') + (it.locked ? `<span class="bd" style="left:6%;bottom:0;color:#fff">🔒</span>` : '') + (it.awaken ? `<span class="bd" style="left:6%;top:2%;color:#ffd34d">✦</span>` : '');
   const cellHtml = (it, r, from, extra = '') => `<div class="a cell f${it.ri >= 5 ? ' hi' : ''}${ui.sel && ui.sel.id === it.id ? ' sel' : ''}" data-drag="${it.id}" data-from="${from}" data-a="sel" data-id="${it.id}" style="${P(r)};--c:${glowColor(it)}${extra}">${iconHtml(it)}${badges(it)}</div>`;
 
@@ -142,6 +155,26 @@ export function initBoard(G, hooks) {
     return h;
   }
 
+  const STAT_KEYS = ['heart', 'lifesteal', 'heal', 'atk', 'def', 'boss', 'dodge', 'crit', 'critdmg', 'skilldmg', 'speed', 'cdr', 'exp', 'gold', 'luck', 'dragon'];
+  const ov = (r, cls2, inner, sc = 0.82) => `<div class="a ovl ${cls2}" style="${P(r)};${sc !== 1 ? `transform:scale(${sc})` : ''}">${inner}</div>`;
+  const overlays = () => {
+    const cid = G.classId || CFG.classId; let h = '';
+    const full = ui.tab === 'equip' && !ui.wide; // chỉ bảng Mặc đồ (không mở rộng) mới có hàng chỉ số, thẻ loại và túi
+    if (full) L.srows.forEach((r, i) => { h += ov([r[0] - 1.9, r[1] - .1, 1.6, r[3] + .2], 'rct', icon(STAT_KEYS[i], '88%'), 1); });
+    const sheet = (key, col = 5) => `<div style="width:92%;height:92%;background:url(assets/ui/equip.png) no-repeat;background-size:700% 1700%;${sheetStyle(key, col)}"></div>`;
+    const tabIc = ['all', 'sheet:' + classGear(cid, 'weapon'), 'sheet:armor', 'sheet:necklace', 'sheet:ring', 'sheet:' + classGear(cid, 'accessory'), 'lock'];
+    if (full) L.itabs.forEach((r, i) => { const k = tabIc[i]; h += ov(i === 0 ? [r[0] + .1, r[1] + .3, 2, r[3] - .6] : r, 'rct', k.startsWith('sheet:') ? sheet(k.slice(6)) : icon(k, '70%'), i === 0 ? 1 : .86); });
+    const sets = [['daily', 'quest', 'trophy', 'card', 'craft', 'gear', 'map'], ['skill', 'paw', 'look', 'zoom', 'filter', 'auto', 'save'], ['sell', 'salvage', 'lock', 'sort', 'clear', 'bag']];
+    // Tọa độ tâm các nút in sẵn trong board.jpg (đo trực tiếp từ ảnh, tính theo % khung 16:9)
+    const sp = (cx, cy, w, hh) => [cx - w / 2, cy - hh / 2, w, hh];
+    const RX = [18.84, 22.03, 25.17, 28.39, 31.6, 34.77, 38.04], DX = [17.64, 21.29, 24.91, 28.52, 32.2, 35.83, 39.3], BX = [84.0, 87.0, 89.7, 92.3, 94.8, 97.7];
+    sets[0].forEach((k, i) => { h += ov(sp(RX[i], 87.35, 2.34, 4.2), 'dsk', icon(k, '80%'), .92); });
+    sets[1].forEach((k, i) => { h += ov(sp(DX[i], 94.4, 3.2, 5.6), i < 5 ? 'dmd' : 'dsk', icon(k, i < 5 ? '68%' : '70%'), i < 5 ? .8 : .86); });
+    sets[2].forEach((k, i) => { h += ov(sp(BX[i], 93.5, 2.5, 4.4), 'rct', icon(k, '82%'), .9); });
+    if (full) ['gear', 'paw', 'trophy', 'craft'].forEach((k, i) => { const r = L.sbtn_hit[i]; h += ov([r[0] + .15, r[1] + .1, 1.5, r[3] - .2], 'rct', icon(k, '86%'), 1); });
+    if (full) h += ov(L.coin.map((v, i) => i === 0 ? v - 1.9 : i === 2 ? 1.6 : v), 'rct', icon('gold', '90%'), 1);
+    return h;
+  };
   const dock = () => {
     const R = [['Hằng ngày', 'tab', 'map'], ['Nhiệm vụ', 'tab', 'quest'], ['Thành tựu', 'modal', 'ach'], ['Thẻ bài', 'tab', 'card'], ['Chế tạo', 'modal', 'craft'], ['Cài đặt', 'modal', 'set'], ['Bản đồ', 'tab', 'map']];
     const Dm = [['Kỹ năng', 'tab', 'skill'], ['Thú', 'modal', 'pets'], ['Ngoại hình', 'modal', 'pets'], ['Tầm nhìn', 'zoom', ''], ['Lọc/xếp', 'modal', 'filter'], ['Auto', 'auto', ''], ['Lưu', 'save', '']];
@@ -202,21 +235,26 @@ export function initBoard(G, hooks) {
     else if (!h && m === 'quick') h = quickModal();
     return h ? `<div class="a veil" data-a="veil"><div class="modal${m === 'quick' || m === 'filter' ? '' : ''}" data-keep>${h}<div class="acts"><button class="b" data-a="closemodal">Đóng</button></div></div></div>` : '';
   }
+  const FLATT = new Set(['atk', 'hp', 'def']);
+  const lineTxt = l => `${FLATT.has(l.type) ? '+' + Math.round(l.v) : '+' + fmt2(l.v) + '%'} ${BONUS_LABEL[l.type] || l.type}${l.type.endsWith('_pct') ? ' (%)' : ''}`;
   function itemModal({ it, where }) {
-    const col = glowColor(it), eq = where !== 'inv', set = it.set && SETS[it.set];
+    const col = glowColor(it), eq = where !== 'inv', set = it.set && SETS[it.set], cid = G.classId || CFG.classId;
     const cur = !eq && (it.slot === 'ring' ? G.eq.ring1 || G.eq.ring2 : G.eq[it.slot]);
-    const info = enhanceInfo(it);
-    let cmp = ''; if (cur && cur.main.type === it.main.type) { const df = Math.round(it.main.v * (1 + 0.05 * (it.enh || 0)) - cur.main.v * (1 + 0.05 * (cur.enh || 0))); cmp = `<div class="dim">So với đang mặc: <b style="color:${df >= 0 ? '#6bff8a' : '#ff7b7b'}">${df >= 0 ? '+' : ''}${df} ${LABEL[it.main.type]}</b></div>`; }
+    const L2 = itemLines(it), main = L2[0], info = enhanceInfo(it), cfx = CLASS_FX[it.cls || cid] || CLASS_FX.knight;
+    let cmp = ''; if (cur && cur.main.type === it.main.type) { const df = Math.round(main.v - itemLines(cur)[0].v); cmp = `<div class="dim">So với đang mặc: <b style="color:${df >= 0 ? '#6bff8a' : '#ff7b7b'}">${df >= 0 ? '+' : ''}${df} ${LABEL[it.main.type]}</b></div>`; }
     const cnt = set ? Object.values(G.eq).filter(x => x && x.set === it.set).length : 0;
-    return `<div style="display:flex;gap:1em"><div class="bigic" style="--c:${col}">${iconHtml(it)}</div><div class="lines" style="min-width:15em"><b style="color:${col};font-size:1.15em">${esc(itemName(it, G.classId || CFG.classId))}${it.enh ? ' +' + it.enh : ''}${it.trans ? ' ⬆' : ''}</b><div class="dim">Lv.${it.lv} · ${RARITY[it.ri].name} · ${SLOT_NAME[it.slot]}${eq ? ' · Đang mặc' : ''}</div>
-      <div style="margin-top:.5em"><b style="color:#ffd98a">${esc(fmt(it.main))}</b></div>${it.affixes.map((a, i) => `<div>${i + 1}. ${esc(fmt(a))}</div>`).join('') || '<div class="dim">Không có dòng phụ</div>'}${it.awaken ? `<div style="color:#ffd34d">✦ ${esc(fmtAw(it.awaken))}</div>` : ''}
-      ${set ? `<div style="margin-top:.4em;color:#9fe3ff">Bộ ${esc(set.name)} (${cnt}/6): ${Object.entries(set.bonus).map(([n, b]) => `${n} món${cnt >= +n ? ' ✓' : ''}: ${Object.entries(b).map(([k, v]) => k === 'dragon_fire' ? 'Hỏa Long' : `+${v}% ${(BONUS_LABEL[k] || k)}`).join(', ')}`).join(' · ')}</div>` : ''}${cmp}
+    const row = l => `<div>${statIcon(l.type, '1.15em')} ${esc(lineTxt(l))} <span class="dim">· ${l.tag}</span></div>`;
+    const groups = {}; L2.filter(l => /^(pas_|ms|brk)/.test(l.id)).forEach(l => { (groups[l.tag] = groups[l.tag] || []).push(lineTxt(l)); });
+    const extra = Object.entries(groups).map(([t, a]) => `<div style="color:${t === 'Nội tại' ? '#c9a8ff' : t.startsWith('Đột') ? '#ffd34d' : '#ffb070'}">${t === 'Nội tại' ? icon('awaken', '1.1em') + ' ' + esc(cfx.passive[0]) : t}: <span class="dim">${esc(a.join(', '))}</span></div>`).join('');
+    const sub = (txt, on) => `<small>${txt}</small>`;
+    const fbtn = (m, t) => `<div class="fb${t.off ? ' off' : ''}" data-a="forge" data-m="${m}" data-id="${it.id}" style="--fc:${MODES[m].color}">${icon(MODES[m].icon, '2.2em')}${MODES[m].name}<small>${t.s}</small></div>`;
+    return `<div style="display:flex;gap:1em"><div class="bigic" style="--c:${col}">${iconHtml(it)}</div><div class="lines" style="min-width:15em"><b style="color:${col};font-size:1.15em">${esc(itemName(it, cid))}${it.enh ? ' +' + it.enh : ''}${trTier(it) ? ' ' + '★'.repeat(trTier(it)) : ''}</b><div class="dim">Lv.${it.lv} · ${RARITY[it.ri].name} · ${SLOT_NAME[it.slot]}${eq ? ' · Đang mặc' : ''}</div>
+      <div style="margin-top:.5em"><b style="color:#ffd98a">${statIcon(main.type, '1.15em')} ${esc(lineTxt(main))}</b></div>${L2.filter(l => l.id[0] === 'a' && /^a\d+$/.test(l.id)).map(row).join('') || '<div class="dim">Không có dòng phụ</div>'}${it.awaken ? `<div style="color:#ffd34d">✦ ${esc(fmtAw(it.awaken))}</div>` : ''}${extra}
+      ${set ? `<div style="margin-top:.4em;color:#9fe3ff">Bộ ${esc(set.name)} (${cnt}/6): ${Object.entries(set.bonus).map(([n, b2]) => `${n} món${cnt >= +n ? ' ✓' : ''}: ${Object.entries(b2).map(([k, v]) => k === 'dragon_fire' ? 'Hỏa Long' : `+${v}% ${(BONUS_LABEL[k] || k)}`).join(', ')}`).join(' · ')}</div>` : ''}${cmp}
       <div class="dim" style="margin-top:.4em">Giá bán ${fmtNum(sellValue(it))} vàng · Phân giải +${salvageGain(it)} đá</div></div></div>
-      <div class="acts">${eq ? `<button class="b" data-a="unequip" data-slot="${where}">Tháo</button>` : `<button class="b" data-a="equip" data-id="${it.id}">Mặc</button>`}<button class="b" data-a="lock" data-id="${it.id}">${it.locked ? 'Mở khóa' : 'Khóa'}</button>
-      ${eq ? '' : `<button class="b red" data-a="sell" data-id="${it.id}">Bán</button><button class="b" data-a="salv" data-id="${it.id}">Phân giải</button>`}
-      <button class="b" data-a="enh" data-id="${it.id}" ${info ? '' : 'disabled'}>Cường hóa${info ? ` ${info.rate}% · ${fmtNum(info.cost)}g` : ' (tối đa)'}</button>
-      <button class="b" data-a="rr" data-id="${it.id}" ${it.affixes.length ? '' : 'disabled'}>Đổi dòng ${fmtNum(rerollCost(it))}g</button>
-      ${it.ri >= 2 && !it.awaken ? `<button class="b" data-a="aw" data-id="${it.id}">Thức tỉnh ${fmtNum(awakenCost(it).gold)}g+${awakenCost(it).stone}đá</button>` : ''}${it.ri >= 4 && !it.trans ? `<button class="b" data-a="tr" data-id="${it.id}">Đột phá</button>` : ''}</div>`;
+      <div class="forgebtns">${fbtn('enhance', { s: info ? `+${it.enh || 0} → +${(it.enh || 0) + 1}` : 'Tối đa' })}${fbtn('reroll', { s: `${it.affixes.length} dòng`, off: !it.affixes.length })}${fbtn('awaken', { s: `Cấp ${awkLv(it)}/3` })}${fbtn('transcend', { s: `Bậc ${trTier(it)}/3` })}</div>
+      <div class="acts">${eq ? `<button class="b" data-a="unequip" data-slot="${where}">Tháo</button>` : `<button class="b" data-a="equip" data-id="${it.id}">Mặc</button>`}<button class="b" data-a="lock" data-id="${it.id}">${icon('lock', '1.1em')} ${it.locked ? 'Mở khóa' : 'Khóa'}</button>
+      ${eq ? '' : `<button class="b red" data-a="sell" data-id="${it.id}">${icon('sell', '1.1em')} Bán</button><button class="b" data-a="salv" data-id="${it.id}">${icon('salvage', '1.1em')} Phân giải</button>`}</div>`;
   }
   const chips = (arr, cur, a, key) => arr.map(([v, n]) => `<span class="chip${cur === v ? ' on' : ''}" data-a="${a}" data-${key}="${v}">${n}</span>`).join('');
   const filterModal = () => `<h3>Lọc & sắp xếp túi</h3><div class="dim">Cấp bậc</div>${chips([['all', 'Tất cả'], ...RARITY.map((r, i) => [i, r.name])], ui.rarity, 'rar', 'v')}<div class="dim" style="margin-top:.6em">Loại trang bị</div>${chips(KIND_GROUPS.map(g => [g.id, g.name]), ui.group, 'grp', 'g')}<div class="dim" style="margin-top:.6em">Sắp xếp lại túi (lưu vĩnh viễn)</div>${chips(Object.entries(SORTS).map(([k, v]) => [k, v[0]]), '', 'sortnow', 'mode')}`;
@@ -272,7 +310,7 @@ export function initBoard(G, hooks) {
     let h = `<div class="a c ttl" style="${P(L.title)}">ETERNAL PIXEL · ${TABS.find(t => t[0] === ui.tab)[1]}</div><div class="a hit" title="Đóng (Esc)" data-a="close" style="${P(L.close)}"></div>`;
     TABS.forEach(([id, n], i) => { h += `<div class="a c tab${ui.tab === id ? ' on' : ''}" data-a="tab" data-t="${id}" style="${P(L.tabs[i])}">${n}</div>`; });
     h += ui.tab === 'equip' ? equipView(d) : pageView(d);
-    h += dock() + modalHtml();
+    h += dock() + overlays() + modalHtml();
     board.innerHTML = h;
   }
 
@@ -315,16 +353,7 @@ export function initBoard(G, hooks) {
       case 'salv': if (!it) return; if (it.locked) return alert('Vật phẩm đang bị khóa.');
         if (it.ri >= 4 && !ask(`Phân giải ${itemName(it, G.classId || CFG.classId)}?`)) return; if (it.ri === 6 && !ask('Vật phẩm ANCIENT – xác nhận lần hai để phân giải?')) return;
         G.mat.stone += salvageGain(it); G.inv = G.inv.filter(x => x.id !== it.id); ui.sel = null; return commit();
-      case 'enh': { if (!it) return; const inf = enhanceInfo(it); if (!inf) return alert('Đã đạt cấp tối đa.'); if (G.gold < inf.cost) return alert(`Không đủ vàng (cần ${inf.cost}).`);
-        if (!ask(`Cường hóa lên +${(it.enh || 0) + 1}?\nChi phí ${inf.cost} vàng · tỷ lệ ${inf.rate}%.\nThất bại không phá hủy trang bị.`)) return;
-        G.gold -= inf.cost; if (Math.random() * 100 < inf.rate) { it.enh = (it.enh || 0) + 1; it.fail = 0; } else { it.fail = (it.fail || 0) + 1; alert('Thất bại (+5% tỷ lệ lần sau).'); } return commit(); }
-      case 'rr': { if (!it) return; const n = +prompt(`Đổi dòng số mấy (1-${it.affixes.length})?`); if (!(n >= 1 && n <= it.affixes.length)) return; const cost = rerollCost(it);
-        if (G.gold < cost) return alert(`Không đủ vàng (cần ${cost}).`); const c = rerollAffix(it, n - 1);
-        if (!ask(`Đổi "${fmt(it.affixes[n - 1])}" thành "${fmt(c)}"?\nChi phí ${cost} vàng.`)) return; G.gold -= cost; it.affixes[n - 1] = c; return commit(); }
-      case 'aw': { if (!it || it.awaken || it.ri < 2) return; const c = awakenCost(it); if (G.gold < c.gold || G.mat.stone < c.stone) return alert(`Không đủ nguyên liệu (cần ${c.gold} vàng + ${c.stone} đá).`);
-        if (!ask(`Thức tỉnh? Chi phí ${c.gold} vàng + ${c.stone} đá. Nhận 1 thuộc tính đặc biệt ngẫu nhiên.`)) return; G.gold -= c.gold; G.mat.stone -= c.stone; it.awaken = rollAwaken(); return commit(); }
-      case 'tr': { if (!it || it.trans) return; if (it.ri < 4 || (it.enh || 0) < TRANS.enh) return alert(`Cần trang bị Legendary trở lên và cường hóa +${TRANS.enh}.`); if (G.gold < TRANS.gold || G.mat.stone < TRANS.stone) return alert('Không đủ vàng hoặc đá.');
-        if (!ask(`Đột phá? Chi phí ${TRANS.gold} vàng + ${TRANS.stone} đá. Chỉ số chính ×1,25 và trần cường hóa lên +25.`)) return; G.gold -= TRANS.gold; G.mat.stone -= TRANS.stone; it.trans = true; return commit(); }
+      case 'forge': if (it) forge.open(it.id, d.m); return;
       case 'sk': { G.sk = G.sk || {}; if (spLeft(G) <= 0 || (G.sk[d.k] || 0) >= SK_MAX) return; G.sk[d.k] = (G.sk[d.k] || 0) + 1; return commit(); }
       case 'skreset': { const c = 50 * G.level; if (!Object.keys(G.sk || {}).length) return; if (G.gold < c) return alert(`Không đủ vàng (cần ${c}).`); if (!ask(`Đặt lại toàn bộ điểm kỹ năng? Chi phí ${c} vàng.`)) return; G.gold -= c; G.sk = {}; return commit(); }
       case 'deck': { const t = d.id, i = G.deck.indexOf(t), kd = CARDS[t].kind || 'monster', used = G.deck.filter(x => CARDS[x] && (CARDS[x].kind || 'monster') === kd).length;
@@ -342,7 +371,7 @@ export function initBoard(G, hooks) {
       case 'auto': hooks.toggleAuto && hooks.toggleAuto(); return close();
       case 'save': hooks.onChange && hooks.onChange(); hooks.msg && hooks.msg('Đã lưu tiến trình'); return;
       case 'craft': { const r = RECIPES[+d.k]; if (G.gold < r.gold || G.mat.stone < r.stone) return alert('Không đủ đá hoặc vàng.'); if (G.inv.length >= G.cap) return alert('Túi đồ đã đầy.');
-        if (!ask(`Chế tạo ${r.name}? Chi phí ${r.stone} đá + ${r.gold} vàng.`)) return; G.gold -= r.gold; G.mat.stone -= r.stone; G.inv.push(genItem(G.level, r.ri)); return commit(); }
+        if (!ask(`Chế tạo ${r.name}? Chi phí ${r.stone} đá + ${r.gold} vàng.`)) return; G.gold -= r.gold; G.mat.stone -= r.stone; G.inv.push(genItem(G.level, r.ri, undefined, undefined, G.classId || CFG.classId)); return commit(); }
       case 'exp': return exportJSON(G);
       case 'imp': { const f = document.createElement('input'); f.type = 'file'; f.accept = '.json'; f.onchange = async () => { try { const dd = await importJSON(f.files[0]); if (!ask('Ghi đè tiến trình hiện tại bằng file backup?')) return; Object.assign(G, dd); commit(); } catch (e) { alert(e.message); } }; return f.click(); }
       case 'travel': if (!ask(`Dịch chuyển tới ${AREAS[d.id].name}?`)) return; return hooks.travel && hooks.travel(d.id);

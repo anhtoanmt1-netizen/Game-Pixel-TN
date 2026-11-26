@@ -31,6 +31,12 @@ export function sfx(name) {
   if (!ctx || ctx.state !== 'running' || !s.sfx) return;
   const v = 0.15 * s.vol;
   const fx = {
+    // Lò Rèn: tụ năng lượng (quét lên), thành công (hợp âm), thất bại (rơi xuống), đột phá/thức tỉnh bậc cao (hợp âm dài), chuyển tab
+    charge: () => { tone(120, 0.9, 'sawtooth', v * .6, 700); tone(180, 0.9, 'triangle', v * .5, 1000); },
+    ok: () => [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.35, 'triangle', v * 1.1), i * 70)),
+    tier: () => [392, 523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.55, 'triangle', v * 1.2), i * 90)),
+    fail: () => { tone(260, 0.35, 'sawtooth', v, 70); setTimeout(() => tone(110, 0.3, 'square', v * .8, 50), 120); },
+    tab: () => tone(880, 0.05, 'square', v * .5),
     hit: () => tone(220, 0.08, 'square', v, 110), crit: () => tone(440, 0.12, 'square', v, 220),
     skill: () => tone(300, 0.25, 'sawtooth', v, 900), hurt: () => tone(120, 0.2, 'sawtooth', v, 60),
     pick: () => tone(660, 0.1, 'triangle', v, 990),

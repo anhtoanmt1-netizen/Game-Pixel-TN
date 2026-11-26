@@ -1,6 +1,9 @@
 // Joystick ảo + nút cho điện thoại. Đọc qua đối tượng TOUCH dùng chung.
 export const TOUCH = { x: 0, y: 0, atk: false, once: { skill: false, dodge: false, auto: false, autoCfg: false } };
 
+import { icon, mountIconDefs } from './icons.js';
+mountIconDefs();
+for (const [id, ic] of [['bAtk', 'atk'], ['bSkill', 'skill'], ['bDodge', 'dodge'], ['bAuto', 'auto']]) { const b = document.getElementById(id); if (b) { b.innerHTML = icon(ic, '64%'); b.style.display = 'flex'; b.style.alignItems = 'center'; b.style.justifyContent = 'center'; b.style.background = 'radial-gradient(circle,#ffffff30,#00000066)'; b.setAttribute('aria-label', id); } }
 const stick = document.getElementById('stick');
 const knob = document.getElementById('knob');
 let activeId = null;

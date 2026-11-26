@@ -1,9 +1,10 @@
 # Dựng tài nguyên địa hình từ 2 bảng gạch: (1) texture nền liền mạch cho từng loại địa hình x 5 chủ đề màu, (2) sprite vật thể (vách đá, bụi, ao, cầu, hàng rào), (3) bụi cỏ vẽ tay để lay động
+from paths import ROOT, WORK, SRC as SRC_DIR, work, need
 import numpy as np, json, os, random
 from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 from skimage.color import rgb2hsv, hsv2rgb
-U='/mnt/user-data/uploads/'; NT='/tmp/nt/'; OUT='/home/claude/ETERNAL-PIXEL/assets/terrain/'
+U=SRC_DIR; NT=work('nt'); OUT=ROOT+'assets/terrain/'
 A=Image.open(U+'Bản_đồ_gạch_địa_hình_pixel_phong_phú__1_.png').convert('RGB'); B=Image.open(U+'Bộ_gạch_địa_hình_pixel_xanh_mát__1_.png').convert('RGB')
 comps=json.load(open(NT+'comps.json'))
 # ---------- 1) cắt sprite vật thể ----------
@@ -75,4 +76,4 @@ for nm in ('grass','meadow','dirt','sand','stone','water','shallow'):
     pass
 sheet=Image.new('RGB',(256*7,256),(0,0,0))
 for k,nm in enumerate(('grass','meadow','dirt','sand','stone','water','shallow')): sheet.paste(Image.open(f'{OUT}forest_{nm}.jpg').resize((256,256)),(k*256,0))
-sheet.save('/tmp/nt/terrain_preview.png')
+sheet.save(NT+'terrain_preview.png')
