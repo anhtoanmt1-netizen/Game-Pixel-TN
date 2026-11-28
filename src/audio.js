@@ -20,16 +20,18 @@ export function initAudio(getSet, areaId) {
   ['pointerdown', 'keydown'].forEach(e => window.addEventListener(e, unlock));
   setInterval(() => {
     const s = S();
-    if (!ctx || ctx.state !== 'running' || !s.music) return;
+    if (!ctx || ctx.state !== 'running' || !(s.musicVol > 0)) return;
     const sc = SCALES[area] || SCALES.forest;
-    if (n++ % 2 === 0) tone(110 * Math.pow(2, sc[(n >> 1) % sc.length] / 12) * (n % 16 < 8 ? 1 : 1.5), 0.4, 'sine', 0.05 * (s.musicVol != null ? s.musicVol : s.vol));
+    if (n++ % 2 === 0) tone(110 * Math.pow(2, sc[(n >> 1) % sc.length] / 12) * (n % 16 < 8 ? 1 : 1.5), 0.4, 'sine', 0.05 * s.musicVol);
   }, 420);
 }
 
+// Ba kênh âm lượng độc lập: hiệu ứng chiến đấu (sfxVol), nhạc nền (musicVol), âm thanh khác = giao diện, Lò Rèn, thông báo (uiVol)
+export const UI_SFX = new Set(['charge', 'ok', 'tier', 'fail', 'tab', 'level', 'pick']);
 export function sfx(name) {
-  const s = S();
-  if (!ctx || ctx.state !== 'running' || !s.sfx) return;
-  const v = 0.15 * (s.sfxVol != null ? s.sfxVol : s.vol);
+  const s = S(), vol = UI_SFX.has(name) ? s.uiVol : s.sfxVol;
+  if (!ctx || ctx.state !== 'running' || !(vol > 0)) return;
+  const v = 0.15 * vol;
   const fx = {
     // Lò Rèn: tụ năng lượng (quét lên), thành công (hợp âm), thất bại (rơi xuống), đột phá/thức tỉnh bậc cao (hợp âm dài), chuyển tab
     charge: () => { tone(120, 0.9, 'sawtooth', v * .6, 700); tone(180, 0.9, 'triangle', v * .5, 1000); },
@@ -44,3 +46,6 @@ export function sfx(name) {
   };
   if (fx[name]) fx[name]();
 }
+
+// Nghe thử khi kéo thanh trượt (cat: 'sfx' | 'ui'); nhạc nền tự nghe được vì đang phát
+export function previewSound(cat) { sfx(cat === 'ui' ? 'tab' : 'hit'); }

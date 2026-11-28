@@ -59,22 +59,30 @@ export function genItem(L, ri, kind, set, cls) {
   };
 }
 
+// ---------- MAY MẮN ----------
+// Chỉ số May mắn (từ trang bị, thẻ, di vật...) ảnh hưởng 3 thứ: (1) bậc của đồ rơi, (2) xác suất rơi đồ/thẻ, (3) bậc của thẻ bổ sung.
+//   luckMult : nhân trọng số bậc từ Hiếm trở lên; bậc càng cao hưởng càng nhiều. Ví dụ May mắn 60: Hiếm ×2, Sử thi ×3, Huyền thoại ×4, Thần thoại ×5
+//   dropChance: nhân xác suất rơi (tối đa 95%). Ví dụ May mắn 150 = gấp đôi tỷ lệ rơi
+export const luckMult = (luck, i) => i >= 2 ? 1 + Math.max(0, luck) / 60 * (i - 1) : 1;
+export const dropChance = (base, luck) => Math.min(0.95, base * (1 + Math.max(0, luck) / 150));
+// Bốc một trọng số theo danh sách; trả về chỉ số
+const pickIdx = (w, rng) => { let r = rng() * w.reduce((a, b) => a + b, 0); for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; } return w.length - 1; };
+
 // Rơi đồ: bảng trọng số + bảo đảm (pity): sau 30 lần không ra Epic+ thì ép ra (GDD 29)
-export function rollRarity(G, minIdx = 0, luck = 0, isBoss = false) {
+export function rollRarity(G, minIdx = 0, luck = 0, rng = Math.random) {
   G.pity = (G.pity || 0) + 1;
   let ri = 0;
   if (G.pity >= 30) ri = 3;
-  else {
-    // May mắn nhân trọng số từ bậc Hiếm trở lên (bậc càng cao càng được lợi nhiều)
-    // Boss có hệ số may mắn cao hơn (x2) cho việc rơi đồ cao cấp
-    const bossMult = isBoss ? 2 : 1;
-    const w = RARITY.map((x, i) => x.w * (i >= 2 ? 1 + (luck / 100) * i * bossMult : 1));
-    let r = Math.random() * w.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) { ri = i; break; } }
-  }
+  else ri = pickIdx(RARITY.map((x, i) => x.w * luckMult(luck, i)), rng);
   ri = Math.max(ri, minIdx);
   if (ri >= 3) G.pity = 0;
   return ri;
+}
+// Chọn một thẻ trong danh sách id theo trọng số độ hiếm, có nhân may mắn (thẻ bậc cao dễ ra hơn khi may mắn cao)
+export function pickCardByLuck(ids, luck = 0, rng = Math.random) {
+  if (!ids.length) return null;
+  const ri = id => RARITY.findIndex(r => r.id === CARDS[id].rarity);
+  return ids[pickIdx(ids.map(id => RARITY[ri(id)].w * luckMult(luck, ri(id))), rng)];
 }
 
 // Thẻ bài: mỗi mẫu 1 bản, trùng lặp = +1 sao (tối đa 5)

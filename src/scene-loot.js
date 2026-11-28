@@ -1,7 +1,7 @@
 // Phương thức của GameScene: Kinh nghiệm, vật phẩm rơi, nhặt đồ (kể cả Auto nhặt/bán/trang bị).
 // Được gắn vào GameScene.prototype trong main.js (Object.assign), nên `this` là cảnh game.
 import { CFG, CLASSES } from './data.js';
-import { PETS, RARITY, CARDS, expNeed, genItem, rollRarity, addCard } from './items.js';
+import { PETS, RARITY, CARDS, expNeed, genItem, rollRarity, addCard, dropChance, pickCardByLuck } from './items.js';
 import { itemName, sellValue, iconPos, EQUIP_COLS } from './inv.js';
 import { sfx } from './audio.js';
 import { passesPick, shouldSell, bestSlot } from './auto.js';
@@ -17,11 +17,13 @@ export const lootMethods = {
 
   dropLoot(e) {
     const boss = e.d.boss, out = [], rift = AREA.mode === 'rift'; // Elite Rift: luôn rơi đồ, tối thiểu Epic
-    const n = boss ? 2 : (rift || Math.random() < 0.35 ? 1 : 0);
-    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), this.ps.luck, boss), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined, CFG.classId) });
-    if (Math.random() < (boss ? 1 : 0.07)) out.push({ card: e.id });
-    const extra = Object.keys(CARDS).filter(k => CARDS[k].kind); // thẻ kỹ năng / di vật
-    if (Math.random() < (boss ? 0.6 : 0.03)) out.push({ card: extra[Math.floor(Math.random() * extra.length)] });
+    const luck = this.ps.luck || 0; // May mắn: tăng xác suất rơi và bậc của đồ/thẻ (xem items.js: luckMult, dropChance)
+    const n = boss ? 2 + (Math.random() < Math.min(0.5, luck / 200) ? 1 : 0) : (rift || Math.random() < dropChance(0.35, luck) ? 1 : 0);
+    for (let i = 0; i < n; i++) out.push({ item: genItem(G.level + (boss ? 3 : 0), rollRarity(G, boss ? 2 : (rift ? 3 : 0), luck), undefined, e.id === 'fire_dragon' && Math.random() < 0.5 ? 'dragon' : undefined, CFG.classId) });
+    if (Math.random() < (boss ? 1 : dropChance(0.07, luck))) out.push({ card: e.id });
+    // Thẻ bổ sung: thẻ kỹ năng/di vật và thẻ quái của khu vực này; may mắn cao thì dễ ra thẻ bậc cao
+    const pool = [...new Set([...Object.keys(CARDS).filter(k => CARDS[k].kind), ...AREA.spawns.map(s => s.id).filter(id => CARDS[id])])];
+    if (Math.random() < dropChance(boss ? 0.6 : 0.03, luck)) { const c = pickCardByLuck(pool, luck); if (c) out.push({ card: c }); }
     out.forEach(o => this.makeDrop(o, e.x + Phaser.Math.Between(-26, 26), e.y + Phaser.Math.Between(-20, 20)));
   },
 

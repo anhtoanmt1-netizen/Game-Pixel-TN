@@ -69,7 +69,7 @@ synth([1420,545,880,1100],(1424,560,18,1000))   # vùng ô trang bị: bỏ khun
 synth([1408,1765,900,335],(1424,560,18,1000))   # thanh vật phẩm mẫu
 Image.fromarray(np.clip(board,0,255).astype(np.uint8)).save(work('ui')+'board_clean.png')
 im=Image.fromarray(np.clip(board,0,255).astype(np.uint8)).resize((2304,1296),Image.LANCZOS)
-im.save(OUT+'assets/ui/board.jpg',quality=88,optimize=True)
+im.save(OUT+'tools/source/board.jpg',quality=88,optimize=True)  # rồi chạy tools/build_board_alpha.py để có assets/ui/board.webp
 # ---- sprite icon trang bị: tách từng icon theo hình dạng thật (ảnh gốc không chia đều), 6 cột (độ hiếm) x 12 hàng (loại) ----
 from scipy import ndimage as ndi
 rows=[]

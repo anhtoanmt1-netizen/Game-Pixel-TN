@@ -1,17 +1,24 @@
 <!doctype html><meta charset=utf-8><base href="/"><title>board</title>
 <body style="margin:0;background:#000">
-<div id=stage style="position:relative;width:1280px;height:720px;overflow:hidden;--u:12.8"></div>
+<div id=stage style="position:relative;width:1280px;height:720px;overflow:hidden;--u:12.8;background:linear-gradient(180deg,#3d7a3a,#2c5a2a 60%,#27502a)"><div style="position:absolute;left:30%;top:40%;width:60px;height:60px;border-radius:50%;background:#ffd34d;box-shadow:0 0 40px #ffd34d"></div><div style="position:absolute;left:55%;top:55%;width:80px;height:50px;border-radius:50%;background:#c0392b"></div></div>
 <script type=module>
 import {initBoard} from './src/board.js';
 import {initHud} from './src/hud.js';
+import {createSettingsPanel} from './src/settings-panel.js';
+import {createMapPicker} from './src/map-picker.js';
 import * as I from './src/items.js';
 const q=new URLSearchParams(location.search), cls=q.get('cls')||'mage';
-const G={level:42,exp:1200,gold:123456,inv:[],eq:{},cards:[],deck:[],pity:0,cap:300,q:{q1:{done:true},q2:{done:true}},sk:{},mat:{stone:777},st:{kills:5,boss:1},ach:{},classId:cls,area:'forest',set:{sfx:true,music:true,vol:.5,lowfx:false,zoom:'near',minimap:true,auto:{range:'near',mode:'free',pickWhen:'now',pickMode:'all',pickKinds:[],pickRar:[],sell:false,sellKinds:[],sellMaxRi:1,equip:false}},pet:null,petLv:{},look:null};
+const G={level:42,exp:1200,gold:123456,inv:[],eq:{},cards:[],deck:[],pity:0,cap:300,q:{q1:{done:true},q2:{done:true}},sk:{},mat:{stone:777},st:{kills:5,boss:1},ach:{},classId:cls,area:'forest',set:{sfxVol:.6,musicVol:.4,uiVol:.8,lowfx:false,zoom:'near',minimap:true,bgDim:.55,bgCombat:true,auto:{range:'near',mode:'free',pickWhen:'now',pickMode:'all',pickKinds:[],pickRar:[],sell:false,sellKinds:[],sellMaxRi:1,equip:false}},pet:null,petLv:{},look:null};
 const slots=['weapon','accessory','helmet','armor','gloves','boots','necklace','ring','cloak','ring'];
 slots.forEach((s,i)=>{const it=I.genItem(40,[6,5,4,3,2,5,4,3,1,0][i],s,undefined,cls);it.id='e'+i;it.enh=i%4*5;G.eq[i==9?'ring2':s==='ring'?'ring1':s]=it;});
 for(let i=0;i<30;i++){const it=I.genItem(30+i,Math.min(6,i%7),undefined,undefined,cls);it.id='i'+i;G.inv.push(it);}
-window.G=G;
-const board=initBoard(G,{ps:()=>({hp:300,maxHp:400}),msg(){},toggleAuto(){},travel(){},onChange(){},sfx(){}});
-initHud(document.getElementById('stage'),{bag(){board.toggle()},zoom(){},auto(){},set(){},autoCfg(){}});
+window.G=G;window.I=I;
+const stage=document.getElementById('stage');
+let settings,maps;
+const board=initBoard(G,{ps:()=>({hp:300,maxHp:400}),msg(){},toggleAuto(){},travel(id){window.traveled=id},onChange(){},sfx(){},openSettings:()=>settings.open(),onSetting(){}});
+settings=createSettingsPanel(stage,{get:()=>G.set,change:(k,v)=>{G.set[k]=v},inGame:true,actions:{toMenu(){window.toMenu=true}}});
+maps=createMapPicker(stage,{G,travel:id=>{window.traveled=id}});
+window.settings=settings;window.maps=maps;
+initHud(stage,{bag(){board.toggle()},zoom(){},auto(){},set(){settings.open()},maps(){maps.open()},autoCfg(){}});
 window.board=board; board.open(); window.ready=true;
 </script>

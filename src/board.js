@@ -3,24 +3,24 @@ import { LAYOUT as L } from './layout.js';
 import { fmt2, RARITY, SLOT_NAME, LABEL, BONUS_LABEL, TYPE_VN, KIND_VN, CARDS, DECK_LIMIT, SK_NODES, SK_MAX, spLeft, SETS, RECIPES, ACHS, genItem, PETS, fmtAw, LOOK_LV, LOOK_NAMES, lookStage, CARD_CAP, cardLvCost, EVO, equip, unequip, fmt, enhanceInfo, rerollCost, derive, expNeed, RESONANCE, itemLines, awkLv, trTier, CLASS_FX } from './items.js';
 import { CLASSES, CFG, AREAS, QUESTS, SKILLS, MONSTERS } from './data.js';
 import { sheetStyle, classGear, cardValue, cardRi, CARD_LV, filterCards, cardSellList, itemName, iconStyle, glowColor, iconPos, KIND_GROUPS, SORTS, filterInv, sortInv, sellValue, salvageGain, quickList, quickTotals, applyRemove, canEquip, equipTo, moveEq } from './inv.js';
-import { exportJSON, importJSON } from './save.js';
+import { mapGridHtml, CARD_CSS } from './map-picker.js';
 import { createForge, MODES } from './forge.js';
 import { icon, mountIconDefs, statIcon } from './icons.js';
 import { KIND_CHIPS } from './auto.js';
 
 const TABS = [['equip', 'MẶC ĐỒ'], ['skill', 'KỸ NĂNG'], ['card', 'THẺ BÀI'], ['quest', 'NHIỆM VỤ'], ['map', 'BẢN ĐỒ']];
-const AREA_ORDER = ['forest', 'cave', 'volcano', 'ice', 'dark', 'hub', 'tower', 'survival', 'bossrush', 'rift', 'daily'];
+const COLS = 6, ROWS = 7; // lưới túi đồ 6×7; cuộn theo hàng
 const FOOT = [78.7, 80.3, 11.3, 2.4];
-const PER_PAGE = 42;
+const PER_PAGE = COLS * ROWS;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const P = r => `left:${r[0]}%;top:${r[1]}%;width:${r[2]}%;height:${r[3]}%`;
 const fmtNum = n => fmt2(n);
 const rcol = ri => RARITY[Math.min(ri, 6)].color;
 
 const CSS = `
-#ui{position:absolute;inset:0;display:none;z-index:40;background:#000;font-family:'Montserrat',sans-serif;color:#e8dcc4;user-select:none;-webkit-user-select:none;touch-action:none}
+#ui{position:absolute;inset:0;display:none;z-index:40;background:rgba(0,0,0,var(--dim,.85));font-family:'Montserrat',sans-serif;color:#e8dcc4;user-select:none;-webkit-user-select:none;touch-action:none}
 #ui.open{display:block}
-#ui .board{position:absolute;inset:0;background:url(assets/ui/board.jpg) center/100% 100% no-repeat;font-size:calc(var(--u,10)*.85px)}
+#ui .board{position:absolute;inset:0;background:url(assets/ui/board.webp) center/100% 100% no-repeat;font-size:calc(var(--u,10)*.85px)}
 #ui .a{position:absolute;box-sizing:border-box}
 #ui .c{display:flex;align-items:center;justify-content:center;text-align:center}
 #ui .hit{cursor:pointer;border-radius:.4em}#ui .hit:hover{box-shadow:0 0 1.1em #ffb44a99,inset 0 0 .8em #ffb44a55}
@@ -72,33 +72,33 @@ const CSS = `
 #ui .page.wide{padding:.7em .9em;border-width:.12em;border-radius:.4em}
 #ui .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.5em .9em;margin-top:.6em}
 #ui .g3 h4{margin:.1em 0 .3em;color:#e8a640;font-size:.95em;letter-spacing:.04em;border-bottom:1px solid #6b5a3a;padding-bottom:.15em}
+#ui .bgc{display:flex;align-items:center;gap:.55em;font-size:calc(var(--u)*.72px);font-weight:700;color:#e6dac0;z-index:2;padding:.25em .7em .25em .5em;border-radius:2em;background:#0009;border:.1em solid #4a3a1c}
+#ui .bgc input{-webkit-appearance:none;appearance:none;width:9em;height:.7em;border-radius:1em;background:linear-gradient(90deg,#9fb4ff var(--p,50%),#2a2418 var(--p,50%));outline:none;cursor:pointer;margin:0;touch-action:pan-y}
+#ui .bgc input::-webkit-slider-thumb{-webkit-appearance:none;width:1.5em;height:1.5em;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#9fb4ff 70%);border:.15em solid #3b2a10}
+#ui .bgc input::-moz-range-thumb{width:1.3em;height:1.3em;border-radius:50%;background:#9fb4ff;border:.15em solid #3b2a10}
+#ui .bgc .bb{width:2.3em;height:2.3em;border-radius:.5em;display:flex;align-items:center;justify-content:center;cursor:pointer;border:.1em solid #4a3a1c;background:#12100a;opacity:.55;transition:all .15s}
+#ui .bgc .bb:hover{opacity:1;filter:brightness(1.3)}#ui .bgc .bb.on{opacity:1;border-color:#ff6a5a;background:#3a1612;box-shadow:0 0 .8em #ff6a5a88}
+#ui .ph{display:flex;align-items:center;gap:.8em;margin:-.2em 0 .7em;padding:.55em .8em;border-radius:.6em;border-left:.3em solid var(--pc);background:linear-gradient(90deg,color-mix(in srgb,var(--pc) 24%,#14120e),transparent 85%)}
+#ui .ph h3{margin:0;flex:1}#ui .ph small{color:#bdb095;font-weight:600}
+#ui .rowic{width:2.7em;height:2.7em;flex:none;border-radius:.5em;border:.12em solid var(--c,#4a3a1c);background:radial-gradient(circle,color-mix(in srgb,var(--c,#4a3a1c) 30%,#14110c),#0c0b09);display:flex;align-items:center;justify-content:center}
+#ui .cardart{width:2.6em;height:3.5em;flex:none;border-radius:.35em;border:.14em solid var(--c);background:linear-gradient(160deg,color-mix(in srgb,var(--c) 35%,#14110c),#0b0a08);display:flex;align-items:center;justify-content:center;box-shadow:0 0 .7em color-mix(in srgb,var(--c) 50%,transparent)}
+#ui .page .mpg{grid-template-columns:repeat(auto-fill,minmax(13em,1fr))}
 #ui .kv{display:flex;justify-content:space-between;gap:.6em;padding:.14em .1em;border-bottom:1px solid #2c2820;font-size:.9em}#ui .kv b{color:#ffd98a;text-align:right}
 `;
 
-export function pickClass(classes) {
-  return new Promise(res => {
-    const d = document.createElement('div');
-    d.style.cssText = "position:absolute;inset:0;z-index:60;background:#0b0d14;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.2em;font-family:'Montserrat',sans-serif;font-size:calc(var(--u,10)*1.1px)";
-    d.innerHTML = '<h2 style="margin:0;letter-spacing:.1em">Chọn lớp nhân vật</h2>' + Object.entries(classes).map(([k, c]) =>
-      `<button data-k="${k}" style="display:flex;align-items:center;gap:1em;padding:.5em 1.2em .5em .6em;min-width:22em;background:#1b1f2e;color:#fff;border:1px solid #fff4;border-radius:.6em;font:600 1em Montserrat,sans-serif;cursor:pointer;text-align:left"><img src="assets/chars/${k}_portrait.png" alt="" style="height:5em"><span>${c.name}<br><small style="font-weight:500;opacity:.8">HP ${c.hp} · DEF ${c.def} · ${c.melee ? 'Cận chiến' : 'Tầm xa'}</small></span></button>`).join('');
-    d.onclick = e => { const b = e.target.closest('button'); if (b) { d.remove(); res(b.dataset.k); } };
-    (document.getElementById('stage') || document.body).appendChild(d);
-  });
-}
-
 export function initBoard(G, hooks) {
-  const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+  const st = document.createElement('style'); st.textContent = CSS + CARD_CSS; document.head.appendChild(st);
   const root = document.createElement('div'); root.id = 'ui'; root.innerHTML = '<div class="board"></div>';
   (document.getElementById('stage') || document.body).appendChild(root);
   const board = root.firstChild;
   mountIconDefs();
-  const ui = { tab: 'equip', page: 0, group: 'all', rarity: 'all', sort: 'new', sel: null, modal: null, q: { mode: 'sell', maxRi: 1, kinds: new Set() }, text: '', cf: { rar: 'all', kind: 'all', lv: 'all' }, wide: false, direct: false };
+  const ui = { tab: 'equip', row: 0, group: 'all', rarity: 'all', sort: 'new', sel: null, modal: null, q: { mode: 'sell', maxRi: 1, kinds: new Set() }, text: '', cf: { rar: 'all', kind: 'all', lv: 'all' }, wide: false, direct: false };
   const cls = () => CLASSES[G.classId || CFG.classId];
   const ps = () => hooks.ps ? hooks.ps() : { hp: 1, maxHp: 1 };
   const commit = () => { hooks.onChange && hooks.onChange(); render(); };
   const findItem = id => { const i = G.inv.find(x => x.id === id); if (i) return { it: i, where: 'inv' }; for (const s in G.eq) if (G.eq[s] && G.eq[s].id === id) return { it: G.eq[s], where: s }; return null; };
   const list = () => filterInv(G.inv, { group: ui.group, rarity: ui.rarity, text: ui.text });
-  const pages = () => Math.max(1, Math.ceil((list().length + 1) / PER_PAGE));
+  const totalRows = () => Math.max(1, Math.ceil(list().length / COLS)), maxRow = () => Math.max(0, totalRows() - ROWS);
   const unlocked = id => !AREAS[id].need || !!(G.q[AREAS[id].need] && G.q[AREAS[id].need].done);
   const questDone = id => !!(G.q[id] && G.q[id].done);
   // Lò Rèn: bảng cường hóa / đổi dòng / thức tỉnh / đột phá (thay các hộp confirm/alert/prompt cũ)
@@ -142,15 +142,15 @@ export function initBoard(G, hooks) {
     h += `<div class="a c" style="${P(L.shead)};justify-content:flex-start;font-weight:700;color:#e8a640;font-size:calc(var(--u)*.85px)">Gia Tăng</div>`;
     ['Cài Đặt', 'Thú & Ngoại Hình', 'Thành Tựu', 'Chế Tạo'].forEach((t, i) => { h += `<div class="a hit" data-a="modal" data-m="${['set', 'pets', 'ach', 'craft'][i]}" style="${P(L.sbtn_hit[i])}"></div><div class="a c" style="${P(L.sbtn[i])};font-weight:700;color:#e6dac0;font-size:calc(var(--u)*.8px);pointer-events:none">${t}</div>`; });
     // túi đồ
-    const lst = list(), pg = Math.min(ui.page, pages() - 1); ui.page = pg;
+    const lst = list(); ui.row = Math.max(0, Math.min(maxRow(), ui.row)); const tr0 = totalRows();
     KIND_GROUPS.forEach((g, i) => { h += `<div class="a hit" title="${g.name}" data-a="grp" data-g="${g.id}" style="${P(L.itabs[i])};${ui.group === g.id ? 'box-shadow:0 0 1em #ffb44a,inset 0 0 .8em #ffb44a88;border:1px solid #ffb44a' : ''}"></div>`; });
     h += `<div class="a c" style="${P([L.itabs[0][0] + 2.2, L.itabs[0][1] + 0.5, 4.3, L.itabs[0][3] - 1])};font-size:calc(var(--u)*.72px);font-weight:700;color:#fff3d6;pointer-events:none">${esc(KIND_GROUPS.find(g => g.id === ui.group).name)}</div>`;
-    for (let i = 0; i < PER_PAGE; i++) { const it = lst[pg * PER_PAGE + i]; if (it) h += cellHtml(it, L.igrid[i], 'inv'); }
+    for (let i = 0; i < PER_PAGE; i++) { const it = lst[ui.row * COLS + i]; if (it) h += cellHtml(it, L.igrid[i], 'inv'); }
     const gr = L.igrid[0], gl = L.igrid[PER_PAGE - 1];
     h += `<div class="a" data-drop="inv" data-zone="inv" style="left:${gr[0]}%;top:${gr[1]}%;width:${gl[0] + gl[2] - gr[0]}%;height:${gl[1] + gl[3] - gr[1]}%;z-index:-1"></div>`;
     h += `<div class="a" style="${P(L.coin)};display:flex;align-items:center;font-weight:800;color:#ffe08a;font-size:calc(var(--u)*.85px)">${fmtNum(G.gold)}</div><div class="a" style="${P(L.count)};display:flex;align-items:center;justify-content:flex-end;font-weight:700;color:#d8ccb4;font-size:calc(var(--u)*.82px)">${G.inv.length} / ${G.cap}</div>`;
-    h += `<div class="a c" style="${P(FOOT)};font-size:calc(var(--u)*.62px);color:#a99f88;font-weight:600;white-space:nowrap;overflow:hidden">${ui.rarity === 'all' ? 'Mọi bậc' : RARITY[ui.rarity].name} · ${SORTS[ui.sort][0]} · Trang ${pg + 1}/${pages()}</div>`;
-    const tr = L.track, th = Math.max(10, 100 / pages()), tp = pages() > 1 ? pg / (pages() - 1) * (100 - th) : 0;
+    h += `<div class="a c" style="${P(FOOT)};font-size:calc(var(--u)*.62px);color:#a99f88;font-weight:600;white-space:nowrap;overflow:hidden">${ui.rarity === 'all' ? 'Mọi bậc' : RARITY[ui.rarity].name} · ${SORTS[ui.sort][0]} · Hàng ${ui.row + 1}–${Math.min(tr0, ui.row + ROWS)}/${tr0}</div>`;
+    const tr = L.track, th = Math.max(10, Math.min(100, ROWS / tr0 * 100)), tp = maxRow() > 0 ? ui.row / maxRow() * (100 - th) : 0;
     h += `<div class="a rail hit" data-a="rail" style="${P(tr)}"><i style="top:${tp}%;height:${th}%"></i></div><div class="a hit" data-a="pg" data-d="-1" style="${P(L.up)}"></div><div class="a hit" data-a="pg" data-d="1" style="${P(L.down)}"></div>`;
     return h;
   }
@@ -165,7 +165,7 @@ export function initBoard(G, hooks) {
     const tabIc = ['all', 'sheet:' + classGear(cid, 'weapon'), 'sheet:armor', 'sheet:necklace', 'sheet:ring', 'sheet:' + classGear(cid, 'accessory'), 'lock'];
     if (full) L.itabs.forEach((r, i) => { const k = tabIc[i]; h += ov(i === 0 ? [r[0] + .1, r[1] + .3, 2, r[3] - .6] : r, 'rct', k.startsWith('sheet:') ? sheet(k.slice(6)) : icon(k, '70%'), i === 0 ? 1 : .86); });
     const sets = [['daily', 'quest', 'trophy', 'card', 'craft', 'gear', 'map'], ['skill', 'paw', 'look', 'zoom', 'filter', 'auto', 'save'], ['sell', 'salvage', 'lock', 'sort', 'clear', 'bag']];
-    // Tọa độ tâm các nút in sẵn trong board.jpg (đo trực tiếp từ ảnh, tính theo % khung 16:9)
+    // Tọa độ tâm các nút in sẵn trong board.webp (đo trực tiếp từ ảnh, tính theo % khung 16:9)
     const sp = (cx, cy, w, hh) => [cx - w / 2, cy - hh / 2, w, hh];
     const RX = [18.84, 22.03, 25.17, 28.39, 31.6, 34.77, 38.04], DX = [17.64, 21.29, 24.91, 28.52, 32.2, 35.83, 39.3], BX = [84.0, 87.0, 89.7, 92.3, 94.8, 97.7];
     sets[0].forEach((k, i) => { h += ov(sp(RX[i], 87.35, 2.34, 4.2), 'dsk', icon(k, '80%'), .92); });
@@ -185,17 +185,21 @@ export function initBoard(G, hooks) {
     return h;
   };
 
+  const pageHead = (ic, title, sub, col) => `<div class="ph" style="--pc:${col}">${icon(ic, '2.6em')}<h3>${title}</h3><small>${sub}</small></div>`;
+  const NODE_IC = { power: 'atk', vital: 'heart', crit: 'crit', arcane: 'skilldmg', haste: 'cdr', swift: 'speed' };
+  const TYPE_IC = { beast: 'paw', insect: 'salvage', fire: 'skilldmg', ice: 'stone', dark: 'look' }, KIND_IC = { skill: 'skill', relic: 'trophy' };
+  const rowIc = (ic, col) => `<div class="rowic" style="--c:${col}">${icon(ic, '1.8em')}</div>`;
   function pageView(d) {
     const r = L.panel_all; let h = `<div class="a page" style="${P(r)}">`;
     if (ui.tab === 'skill') {
       const sk = SKILLS[cls().skill]; const left = spLeft(G);
-      h += `<h3>Kỹ năng chủ động · ${esc(cls().name)}</h3><div class="row"><div class="g"><b>${esc(sk.name)}</b><small>Hệ số ${sk.mult * 100}% · ${sk.type === 'proj' ? 'bắn xa' : 'diện rộng'}${sk.pierce ? ' · xuyên' : ''} · hồi ${(sk.cooldown * (1 - d.cdr / 100)).toFixed(1)}s (phím 1)</small></div></div>`;
+      h += pageHead('skill', 'Kỹ năng', `${esc(cls().name)} · điểm còn lại: ${left}`, '#ff9a3c') + `<h3>Kỹ năng chủ động</h3><div class="row">${rowIc('skill', '#ff9a3c')}<div class="g"><b>${esc(sk.name)}</b><small>Hệ số ${sk.mult * 100}% · ${sk.type === 'proj' ? 'bắn xa' : 'diện rộng'}${sk.pierce ? ' · xuyên' : ''} · hồi ${(sk.cooldown * (1 - d.cdr / 100)).toFixed(1)}s (phím 1)</small></div></div>`;
       h += `<h3>Kỹ năng bị động · điểm còn lại: ${left}</h3>`;
-      for (const [k, [n, ds]] of Object.entries(SK_NODES)) { const v = (G.sk && G.sk[k]) || 0; h += `<div class="row"><div class="g"><b>${n}</b> <span class="dim">${v}/${SK_MAX}</span><small>${ds}</small></div><button class="b" data-a="sk" data-k="${k}" ${left <= 0 || v >= SK_MAX ? 'disabled' : ''}>+</button></div>`; }
+      for (const [k, [n, ds]] of Object.entries(SK_NODES)) { const v = (G.sk && G.sk[k]) || 0; h += `<div class="row">${rowIc(NODE_IC[k] || 'stats', v ? '#ffd34d' : '#4a3a1c')}<div class="g"><b>${n}</b> <span class="dim">${v}/${SK_MAX}</span><small>${ds}</small></div><button class="b" data-a="sk" data-k="${k}" ${left <= 0 || v >= SK_MAX ? 'disabled' : ''}>+</button></div>`; }
       h += `<div class="acts"><button class="b red" data-a="skreset">Đặt lại (${50 * G.level} vàng)</button></div>`;
     } else if (ui.tab === 'card') {
       const cnt = k => G.deck.filter(id => (CARDS[id] && CARDS[id].kind || 'monster') === k).length;
-      h += `<h3>Bộ thẻ · Quái ${cnt('monster')}/${DECK_LIMIT.monster} · Kỹ năng ${cnt('skill')}/${DECK_LIMIT.skill} · Di vật ${cnt('relic')}/${DECK_LIMIT.relic}</h3>`;
+      h += pageHead('card', 'Thẻ bài', `Quái ${cnt('monster')}/${DECK_LIMIT.monster} · Kỹ năng ${cnt('skill')}/${DECK_LIMIT.skill} · Di vật ${cnt('relic')}/${DECK_LIMIT.relic}`, '#b78bff');
       const ty = {}; G.deck.forEach(id => { const c = CARDS[id]; if (c && c.type && G.cards.some(x => x.t === id)) ty[c.type] = (ty[c.type] || 0) + 1; });
       h += `<div class="dim" style="margin-bottom:.6em">Cộng hưởng: ${Object.keys(RESONANCE).map(k => `${TYPE_VN[k] || k} ${ty[k] || 0}/2${(ty[k] || 0) >= 2 ? ' ✓' : ''}`).join(' · ')}</div>`;
       const clist = filterCards(G, CARDS, ui.cf), sl = cardSellList(G, CARDS, ui.cf);
@@ -203,30 +207,25 @@ export function initBoard(G, hooks) {
         <div class="acts"><span class="dim">${clist.length} / ${G.cards.length} thẻ</span><button class="b red" data-a="csellmodal" ${sl.length ? '' : 'disabled'}>Bán thẻ theo bộ lọc (${sl.length})</button></div>`;
       h += clist.map(cd => {
         const def = CARDS[cd.t], on = G.deck.includes(cd.t), cap = CARD_CAP[def.rarity], k = cardLvCost(cd), col = rcol(cardRi(def));
-        return `<div class="row" style="border-color:${col}"><div class="g"><b style="color:${col}">${esc(def.name)}${cd.evo ? ' ✦' : ''}${cd.locked ? ' 🔒' : ''}</b> <span class="dim">${KIND_VN[def.kind || 'monster']} · Lv.${cd.lv || 1}/${cap} · ${'★'.repeat(cd.star) || 'chưa có sao'}</span><small>${Object.entries(def.bonus).map(([a, v]) => `+${fmt2(v)}% ${BONUS_LABEL[a] || a}`).join(', ')}${def.note ? esc(def.note) : ''}</small></div>
+        return `<div class="row" style="border-color:${col}"><div class="cardart" style="--c:${col}">${icon(KIND_IC[def.kind] || TYPE_IC[def.type] || 'paw', '1.7em')}</div><div class="g"><b style="color:${col}">${esc(def.name)}${cd.evo ? ' ✦' : ''}${cd.locked ? ' 🔒' : ''}</b> <span class="dim">${KIND_VN[def.kind || 'monster']} · Lv.${cd.lv || 1}/${cap} · ${'★'.repeat(cd.star) || 'chưa có sao'}</span><small>${Object.entries(def.bonus).map(([a, v]) => `+${fmt2(v)}% ${BONUS_LABEL[a] || a}`).join(', ')}${def.note ? esc(def.note) : ''}</small></div>
         <button class="b" data-a="deck" data-id="${esc(cd.t)}">${on ? 'Gỡ' : 'Trang bị'}</button><button class="b" data-a="clv" data-id="${esc(cd.t)}">Lên cấp ${fmt2(k.gold)}g+${k.stone}đá</button>${cd.evo ? '' : `<button class="b" data-a="cevo" data-id="${esc(cd.t)}">Tiến hóa</button>`}<button class="b" data-a="cardlock" data-id="${esc(cd.t)}">${cd.locked ? 'Mở khóa' : 'Khóa'}</button><button class="b red" data-a="cardsell" data-id="${esc(cd.t)}">Bán ${fmt2(cardValue(cd, def))}g</button></div>`;
       }).join('') || '<div class="dim">Không có thẻ nào khớp bộ lọc. Hạ quái và boss để nhận thẻ.</div>';
     } else if (ui.tab === 'quest') {
-      h += `<h3>Nhiệm vụ</h3>` + QUESTS.map(q => {
+      h += pageHead('quest', 'Nhiệm vụ', `${QUESTS.filter(q => questDone(q.id)).length}/${QUESTS.length} hoàn thành`, '#ffd34d') + QUESTS.map(q => {
         const done = questDone(q.id), ready = !q.after || questDone(q.after), p = (G.q[q.id] && G.q[q.id].p) || 0, pct = done ? 100 : Math.min(100, p / q.n * 100);
-        return `<div class="row" style="opacity:${ready || done ? 1 : .45}"><div class="g"><b>${done ? '✅ ' : ''}${esc(q.name)}</b> <span class="dim">${done ? 'Hoàn thành' : ready ? `${p}/${q.n}` : 'Chưa mở'}</span><small>Hạ ${esc(MONSTERS[q.target].name)} ×${q.n} · Thưởng ${fmtNum(q.reward.exp)} EXP, ${fmtNum(q.reward.gold)} vàng${q.unlock ? ' · Mở ' + AREAS[q.unlock].name : ''}</small><div class="bar" style="height:.55em;margin-top:.3em"><i style="width:${pct}%"></i></div></div></div>`;
-      }).join('') + '<h3>Thành tựu</h3>' + achHtml();
+        return `<div class="row" style="opacity:${ready || done ? 1 : .45}">${rowIc(done ? 'check' : !ready ? 'lock' : (MONSTERS[q.target] && MONSTERS[q.target].boss ? 'boss' : 'atk'), done ? '#6bff8a' : ready ? '#ffd34d' : '#4a3a1c')}<div class="g"><b>${esc(q.name)}</b> <span class="dim">${done ? 'Hoàn thành' : ready ? `${p}/${q.n}` : 'Chưa mở'}</span><small>Hạ ${esc(MONSTERS[q.target].name)} ×${q.n} · Thưởng ${fmtNum(q.reward.exp)} EXP, ${fmtNum(q.reward.gold)} vàng${q.unlock ? ' · Mở ' + AREAS[q.unlock].name : ''}</small><div class="bar" style="height:.55em;margin-top:.3em"><i style="width:${pct}%"></i></div></div></div>`;
+      }).join('') + pageHead('trophy', 'Thành tựu', `${ACHS.filter(a => G.ach[a.id]).length}/${ACHS.length}`, '#f4bb3c') + achHtml();
     } else if (ui.tab === 'map') {
-      h += `<h3>Bản đồ & chế độ chơi</h3>` + AREA_ORDER.map(id => {
-        const a = AREAS[id], ok = unlocked(id), cur = G.area === id, key = a.mode ? (a.mode === 'tower' ? 'best' : 'rec_' + a.mode) : null;
-        const need = a.need ? QUESTS.find(q => q.id === a.need).name : '';
-        return `<div class="row" style="opacity:${ok ? 1 : .5}"><div class="g"><b>${cur ? '📍 ' : ''}${esc(a.name)}</b><small>${a.mode ? 'Chế độ thử thách' : 'Khu vực'}${key && G.st[key] ? ` · Kỷ lục: ${G.st[key]}` : ''}${ok ? '' : ` · Khóa: hoàn thành "${esc(need)}"`}</small></div><button class="b" data-a="travel" data-id="${id}" ${!ok || cur ? 'disabled' : ''}>${cur ? 'Đang ở đây' : 'Dịch chuyển'}</button></div>`;
-      }).join('');
+      h += pageHead('map', 'Bản đồ & chế độ chơi', esc((AREAS[G.area] || AREAS.forest).name), '#4ad8f0') + mapGridHtml(G, (id, ok, cur) => (ok && !cur ? 'data-a="travel"' : ''));
     }
     return h + '</div>';
   }
-  const achHtml = () => ACHS.map(a => `<div class="row"><div class="g">${G.ach[a.id] ? '✅' : '⬜'} <b>${esc(a.name)}</b><small>${esc(a.desc)} · +${fmtNum(a.gold)} vàng</small></div></div>`).join('');
+  const achHtml = () => ACHS.map(a => `<div class="row">${rowIc(G.ach[a.id] ? 'trophy' : 'lock', G.ach[a.id] ? '#f4bb3c' : '#4a3a1c')}<div class="g"><b>${esc(a.name)}</b><small>${esc(a.desc)} · +${fmtNum(a.gold)} vàng</small></div></div>`).join('');
 
   function modalHtml() {
     const m = ui.modal, d = derive(cls(), G, CFG); let h = '';
     if (ui.sel && ui.sel.t === 'item') { const f = findItem(ui.sel.id); if (f) h = itemModal(f); else ui.sel = null; }
-    if (!h && m === 'set') h = settingsModal();
-    else if (!h && m === 'pets') h = petsModal();
+    if (!h && m === 'pets') h = petsModal();
     else if (!h && m === 'craft') h = `<h3>Chế tạo · Đá nâng cấp: ${G.mat.stone}</h3><div class="dim">Phân giải trang bị trong túi để lấy đá. Chi phí chế tạo luôn cao hơn đá thu về.</div>` + RECIPES.map((r, k) => `<div class="row"><div class="g"><b>${r.name}</b><small>${r.stone} đá + ${fmtNum(r.gold)} vàng</small></div><button class="b" data-a="craft" data-k="${k}" ${G.mat.stone < r.stone || G.gold < r.gold ? 'disabled' : ''}>Chế tạo</button></div>`).join('');
     else if (!h && m === 'ach') h = '<h3>Thành tựu</h3>' + achHtml();
     else if (!h && m === 'filter') h = filterModal();
@@ -263,29 +262,6 @@ export function initBoard(G, hooks) {
     return `<h3>${ui.q.mode === 'sell' ? 'Bán nhanh' : 'Phân giải nhanh'}</h3><div class="dim">Đến độ hiếm</div>${chips(RARITY.slice(0, 6).map((r, i) => [i, r.name]), ui.q.maxRi, 'qri', 'v')}<div class="dim" style="margin-top:.6em">Loại (bỏ trống = tất cả)</div>${[['weapon', 'Vũ khí'], ['helmet', 'Mũ'], ['armor', 'Giáp'], ['gloves', 'Găng'], ['boots', 'Giày'], ['necklace', 'Dây chuyền'], ['ring', 'Nhẫn'], ['cloak', 'Áo choàng'], ['accessory', 'Phụ kiện']].map(([k, n]) => `<span class="chip${kinds.has(k) ? ' on' : ''}" data-a="qkind" data-k="${k}">${n}</span>`).join('')}
       <div style="margin-top:.8em">Sẽ ${ui.q.mode === 'sell' ? 'bán' : 'phân giải'} <b>${t.n}</b> món (không động tới đồ đã khóa) → <b style="color:#ffd98a">${ui.q.mode === 'sell' ? fmtNum(t.gold) + ' vàng' : t.stone + ' đá'}</b></div><div class="acts"><button class="b red" data-a="qgo" ${t.n ? '' : 'disabled'}>Xác nhận</button><button class="b" data-a="qmode">Chuyển sang ${ui.q.mode === 'sell' ? 'phân giải' : 'bán'}</button></div>`;
   }
-  const slider = (label, key, min, max, step, unit, iconName) => {
-  const v = G.set[key] != null ? G.set[key] : (key === 'vol' ? 0.5 : 0.8);
-  const pct = Math.round(((v - min) / (max - min)) * 100);
-  return `<div class="row" style="margin:.5em 0"><div class="g" style="display:flex;align-items:center;gap:.6em">${icon(iconName || 'stats', '1.2em')} <b>${label}</b></div><div style="flex:1;max-width:200px"><div class="rail hit" data-a="slider" data-k="${key}" data-min="${min}" data-max="${max}" data-step="${step}" style="position:relative;height:1em;background:#3d382d;border-radius:.5em;overflow:hidden;cursor:pointer"><i style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:linear-gradient(90deg,#e1a64d,#8a5a1a);border-radius:.5em"></i><span style="position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:1em;height:1em;background:#fff;border-radius:50%;box-shadow:0 0 .6em #000;border:1px solid #fff"></span></div><div style="font-size:.78em;color:#a79d86;margin-top:.2em">${Math.round(v * 100)}${unit || '%'}</div></div></div>`;
-};
-
-const settingsModal = () => `<h3>${icon('gear', '1.4em')} Cài đặt</h3>
-<div class="acts" style="margin-bottom:.8em">
-  <button class="b" data-a="modal" data-m="auto">${icon('auto', '1.2em')} Cài đặt Auto…</button>
-  <button class="b" data-a="set" data-k="mainMenu">${icon('portal', '1.2em')} Màn hình chính: ${G.set.mainMenu ? 'Bật' : 'Tắt'}</button>
-  <button class="b" data-a="set" data-k="continuousCombat">${icon('atk', '1.2em')} Chiến đấu liên tục: ${G.set.continuousCombat ? 'Bật' : 'Tắt'}</button>
-</div>
-<h3 style="margin-top:1em">${icon('music', '1.3em')} Âm thanh</h3>
-<div class="acts">
-  <button class="b" data-a="set" data-k="sfx">${icon('skill', '1.2em')} Âm thanh hiệu ứng: ${G.set.sfx ? 'Bật' : 'Tắt'}</button>
-  <button class="b" data-a="set" data-k="music">${icon('music', '1.2em')} Âm thanh nền: ${G.set.music ? 'Bật' : 'Tắt'}</button>
-</div>
-${slider('Âm lượng hiệu ứng', 'sfxVol', 0, 1, 0.05, '%', 'skill')}
-${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
-<button class="b" data-a="set" data-k="lowfx">${icon('lowfx', '1.2em')} Giảm hiệu ứng: ${G.set.lowfx ? 'Bật' : 'Tắt'}</button>
-<button class="b" data-a="set" data-k="minimap">${icon('map', '1.2em')} Bản đồ nhỏ: ${G.set.minimap ? 'Bật' : 'Tắt'}</button>
-<h3 style="margin-top:1em">${icon('zoom', '1.3em')} Tầm nhìn</h3><div class="acts">${[['near', 'Gần'], ['wide', 'Rộng'], ['ultra', 'Siêu rộng']].map(([k, n]) => `<button class="b${G.set.zoom === k ? '' : ''}" style="${G.set.zoom === k ? 'background:#8a5a1a' : ''}" data-a="zoomset" data-k="${k}">${icon('zoom','1.1em')} ${n}</button>`).join('')}</div>
-<h3 style="margin-top:1em">${icon('save', '1.3em')} Sao lưu</h3><div class="acts"><button class="b" data-a="exp">${icon('save', '1.2em')} Xuất backup</button><button class="b" data-a="imp">${icon('save', '1.2em')} Nhập backup</button></div>`;
   const petsModal = () => `<h3>Thú đồng hành</h3>` + Object.entries(PETS).map(([k, p]) => { const ok = questDone(p.unlock), lv = (G.petLv && G.petLv[k]) || 1; return `<div class="row"><div class="g"><b>${p.name}</b> <span class="dim">Cấp ${lv}/10</span><small>${p.desc}${ok ? '' : ' · Khóa: hoàn thành nhiệm vụ ' + p.unlock}</small></div>${ok ? `<button class="b" data-a="pet" data-k="${k}">${G.pet === k ? 'Cất đi' : 'Mang theo'}</button><button class="b" data-a="plv" data-k="${k}">Nâng ${200 * lv}g</button>` : ''}</div>`; }).join('') +
     `<h3 style="margin-top:1em">Ngoại hình (chỉ thay hình ảnh)</h3><div class="acts">${LOOK_NAMES.map((n, i) => G.level >= LOOK_LV[i] ? `<button class="b" style="${lookStage(G) === i ? 'background:#8a5a1a' : ''}" data-a="look" data-k="${i}">${n}</button>` : `<span class="dim">${n}: Lv.${LOOK_LV[i]}</span>`).join('')}</div>`;
 
@@ -326,8 +302,10 @@ ${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
 
   function render() {
     if (!root.classList.contains('open')) return;
-    const d = derive(cls(), G, CFG);
-    let h = `<div class="a c ttl" style="${P(L.title)}">ETERNAL PIXEL · ${TABS.find(t => t[0] === ui.tab)[1]}</div><div class="a hit" title="Đóng (Esc)" data-a="close" style="${P(L.close)}"></div>`;
+    const d = derive(cls(), G, CFG); root.style.setProperty('--dim', G.set.bgDim);
+    const dim = Math.round(G.set.bgDim * 100);
+    let h = `<div class="a bgc" data-keep style="left:6.8%;top:4.4%" title="Độ mờ nền sau các bảng"><span>${icon('dim', '1.5em')}</span><input type="range" min="0" max="100" value="${dim}" data-bgdim style="--p:${dim}%"><span data-bgv style="min-width:2.6em">${dim}%</span><span class="bb${G.set.bgCombat ? ' on' : ''}" data-a="bgcombat" title="Chiến đấu nền: ${G.set.bgCombat ? 'BẬT' : 'TẮT'}">${icon('swords', '1.6em')}</span><span class="bb" data-a="modal" data-m="set" title="Cài đặt">${icon('gear', '1.5em')}</span></div>`;
+    h += `<div class="a c ttl" style="${P(L.title)}">ETERNAL PIXEL · ${TABS.find(t => t[0] === ui.tab)[1]}</div><div class="a hit" title="Đóng (Esc)" data-a="close" style="${P(L.close)}"></div>`;
     TABS.forEach(([id, n], i) => { h += `<div class="a c tab${ui.tab === id ? ' on' : ''}" data-a="tab" data-t="${id}" style="${P(L.tabs[i])}">${n}</div>`; });
     h += ui.tab === 'equip' ? equipView(d) : pageView(d);
     h += dock() + overlays() + modalHtml();
@@ -356,14 +334,15 @@ ${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
         const set = new Set(lst); G.gold += total; G.cards = G.cards.filter(cd => !set.has(cd)); ui.modal = null; return commit(); }
       case 'close': return close();
       case 'tab': if (d.t === 'equip' || d.t) { ui.tab = d.t; ui.sel = null; ui.modal = null; } return render();
-      case 'grp': ui.group = d.g; ui.page = 0; return render();
-      case 'rar': ui.rarity = d.v === 'all' ? 'all' : +d.v; ui.page = 0; return render();
-      case 'pg': ui.page = Math.max(0, Math.min(pages() - 1, ui.page + +d.d)); return render();
-      case 'rail': { const r = d.el.getBoundingClientRect(); ui.page = Math.max(0, Math.min(pages() - 1, Math.round((ev.clientY - r.top) / r.height * (pages() - 1)))); return render(); }
-      case 'touch-scroll': { /* xử lý vuốt trong túi đồ */ return; }
+      case 'grp': ui.group = d.g; ui.row = 0; return render();
+      case 'rar': ui.rarity = d.v === 'all' ? 'all' : +d.v; ui.row = 0; return render();
+      case 'pg': ui.row = Math.max(0, Math.min(maxRow(), ui.row + +d.d * ROWS)); return render();
+      case 'rows': ui.row = Math.max(0, Math.min(maxRow(), ui.row + +d.d)); return render();
+      case 'rail': { const r = d.el.getBoundingClientRect(); ui.row = Math.max(0, Math.min(maxRow(), Math.round((ev.clientY - r.top) / r.height * maxRow()))); return render(); }
       case 'sel': ui.sel = { t: 'item', id: d.id }; ui.modal = null; return render();
       case 'selcard': ui.tab = 'card'; return render();
-      case 'modal': ui.modal = d.m; ui.sel = null; return render();
+      case 'modal': if (d.m === 'set') return hooks.openSettings && hooks.openSettings(); ui.modal = d.m; ui.sel = null; return render();
+      case 'bgcombat': G.set.bgCombat = !G.set.bgCombat; hooks.onSetting && hooks.onSetting('bgCombat'); hooks.msg && hooks.msg('Chiến đấu nền: ' + (G.set.bgCombat ? 'BẬT' : 'TẮT')); return commit();
       case 'veil': case 'closemodal': ui.modal = null; ui.sel = null; if (ui.direct) { ui.direct = false; return close(); } return render(); // mở từ phím tắt thì đóng luôn bảng
       case 'equip': if (it) { equip(G, it); ui.sel = null; } return commit();
       case 'unequip': unequip(G, d.slot); ui.sel = null; return commit();
@@ -386,21 +365,15 @@ ${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
       case 'pet': G.pet = G.pet === d.k ? null : d.k; return commit();
       case 'plv': { G.petLv = G.petLv || {}; const lv = G.petLv[d.k] || 1; if (lv >= 10) return alert('Thú đã đạt cấp tối đa.'); const c = 200 * lv; if (G.gold < c) return alert(`Không đủ vàng (cần ${c}).`); G.gold -= c; G.petLv[d.k] = lv + 1; return commit(); }
       case 'look': G.look = +d.k; return commit();
-      case 'set': if (d.k === 'vol') G.set.vol = G.set.vol >= 1 ? 0.25 : +(G.set.vol + 0.25).toFixed(2); else if (['sfxVol','musicVol'].includes(d.k)) { /* slider handled separately */ } else G.set[d.k] = !G.set[d.k]; return commit();
-      case 'slider': { const k = d.k, min = +d.min, max = +d.max, step = +d.step; let v = G.set[k] != null ? G.set[k] : 0.5; if (ev) { const r = d.el.getBoundingClientRect(); let pct = (ev.clientX - r.left) / r.width; pct = Math.max(0, Math.min(1, pct)); v = min + pct * (max - min); v = Math.round(v / step) * step; } else v = Math.min(max, Math.max(min, v + step)); G.set[k] = +v.toFixed(2); return render(); }
       case 'zoomset': G.set.zoom = d.k; return commit();
       case 'zoom': G.set.zoom = { near: 'wide', wide: 'ultra', ultra: 'near' }[G.set.zoom || 'near']; hooks.msg && hooks.msg('Tầm nhìn: ' + { near: 'Gần', wide: 'Rộng', ultra: 'Siêu rộng' }[G.set.zoom]); return commit();
       case 'auto': hooks.toggleAuto && hooks.toggleAuto(); return close();
-      case 'continuousCombat': G.set.continuousCombat = !G.set.continuousCombat; hooks.msg && hooks.msg('Chiến đấu liên tục: ' + (G.set.continuousCombat ? 'BẬT' : 'TẮT')); return commit();
-      case 'mainMenu': G.set.mainMenu = !G.set.mainMenu; hooks.msg && hooks.msg('Màn hình chính: ' + (G.set.mainMenu ? 'BẬT' : 'TẮT')); return commit();
       case 'save': hooks.onChange && hooks.onChange(); hooks.msg && hooks.msg('Đã lưu tiến trình'); return;
       case 'craft': { const r = RECIPES[+d.k]; if (G.gold < r.gold || G.mat.stone < r.stone) return alert('Không đủ đá hoặc vàng.'); if (G.inv.length >= G.cap) return alert('Túi đồ đã đầy.');
         if (!ask(`Chế tạo ${r.name}? Chi phí ${r.stone} đá + ${r.gold} vàng.`)) return; G.gold -= r.gold; G.mat.stone -= r.stone; G.inv.push(genItem(G.level, r.ri, undefined, undefined, G.classId || CFG.classId)); return commit(); }
-      case 'exp': return exportJSON(G);
-      case 'imp': { const f = document.createElement('input'); f.type = 'file'; f.accept = '.json'; f.onchange = async () => { try { const dd = await importJSON(f.files[0]); if (!ask('Ghi đè tiến trình hiện tại bằng file backup?')) return; Object.assign(G, dd); commit(); } catch (e) { alert(e.message); } }; return f.click(); }
-      case 'travel': if (!ask(`Dịch chuyển tới ${AREAS[d.id].name}?`)) return; return hooks.travel && hooks.travel(d.id);
+      case 'travel': return hooks.travel && hooks.travel(d.id);
       case 'sortnow': { const mode = d.mode || d.m; if (!SORTS[mode]) return; sortInv(G.inv, mode); ui.sort = mode; hooks.msg && hooks.msg('Đã sắp xếp túi: ' + SORTS[mode][0]); return commit(); }
-      case 'clearf': ui.group = 'all'; ui.rarity = 'all'; ui.page = 0; return render();
+      case 'clearf': ui.group = 'all'; ui.rarity = 'all'; ui.row = 0; return render();
       case 'lockrare': { const l = G.inv.filter(x => x.ri >= 4 && !x.locked); l.forEach(x => { x.locked = true; }); hooks.msg && hooks.msg(l.length ? `Đã khóa ${l.length} món hiếm` : 'Không còn đồ hiếm chưa khóa'); return commit(); }
       case 'quick': ui.q.mode = d.mode || d.m; ui.modal = 'quick'; ui.sel = null; return render();
       case 'qri': ui.q.maxRi = +d.v; return render();
@@ -420,21 +393,10 @@ ${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
     if (el.dataset.a === 'veil' && e.target !== el) return; // chỉ đóng khi bấm nền mờ
     act(el.dataset.a, { ...el.dataset, el }, e);
   });
-  board.addEventListener('wheel', e => { if (ui.tab === 'equip' && !ui.modal && !ui.sel) { e.preventDefault(); act('pg', { d: e.deltaY > 0 ? 1 : -1 }); } }, { passive: false });
-
-  // ---------- Vuốt cuộn túi đồ trên điện thoại ----------
-  let ts = { y: 0, t: 0, active: false };
-  board.addEventListener('pointerdown', e => {
-    if (ui.tab === 'equip' && !ui.modal && !ui.sel && e.target.closest('.igrid,.page')) {
-      ts = { y: e.clientY, t: Date.now(), active: true };
-    }
-  }, { passive: true });
-  board.addEventListener('pointermove', e => {
-    if (!ts.active || ui.tab !== 'equip' || ui.modal || ui.sel) return;
-    const dy = e.clientY - ts.y;
-    if (Math.abs(dy) > 15) { e.preventDefault(); ts.y = e.clientY; act('pg', { d: dy > 0 ? 1 : -1 }); }
-  }, { passive: false });
-  board.addEventListener('pointerup', () => { ts.active = false; });
+  // Thanh trượt độ mờ nền: đổi ngay, không dựng lại bảng (để không ngắt thao tác kéo)
+  board.addEventListener('input', e => { const r = e.target.closest('[data-bgdim]'); if (!r) return; G.set.bgDim = +r.value / 100; root.style.setProperty('--dim', G.set.bgDim); r.style.setProperty('--p', r.value + '%'); const v = board.querySelector('[data-bgv]'); if (v) v.textContent = r.value + '%'; hooks.onSetting && hooks.onSetting('bgDim'); });
+  board.addEventListener('change', e => { if (e.target.closest('[data-bgdim]')) hooks.onChange && hooks.onChange(); });
+  board.addEventListener('wheel', e => { if (ui.tab === 'equip' && !ui.modal && !ui.sel) { e.preventDefault(); act('rows', { d: e.deltaY > 0 ? 1 : -1 }); } }, { passive: false });
 
   // ---------- kéo-thả (chuột và cảm ứng): giữ ~0,25s trên điện thoại để kéo ----------
   let drag = null, ghost = null, suppress = false;
@@ -467,6 +429,22 @@ ${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
     else if (to === 'inv' && dg.from.startsWith('eq:')) { const before = G.inv.length; unequip(G, dg.from.slice(3)); ok = G.inv.length > before; if (!ok) hooks.msg && hooks.msg('Túi đồ đã đầy'); }
     ok ? commit() : render();
   });
+  // Vuốt lên/xuống trên vùng túi đồ (điện thoại/bút cảm ứng) để cuộn theo hàng; giữ ~0,25s mới kéo-thả vật phẩm
+  let sw = null;
+  board.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || ui.tab !== 'equip' || ui.wide || ui.modal || ui.sel || maxRow() === 0) return;
+    const r = board.getBoundingClientRect(), a = L.igrid[0], z = L.igrid[PER_PAGE - 1], px = (e.clientX - r.left) / r.width * 100, py = (e.clientY - r.top) / r.height * 100;
+    if (px < a[0] || px > z[0] + z[2] || py < a[1] || py > z[1] + z[3]) return;
+    sw = { y0: e.clientY, row0: ui.row, moved: false, rowPx: r.height * (L.igrid[COLS][1] - L.igrid[0][1]) / 100 };
+  });
+  window.addEventListener('pointermove', e => {
+    if (!sw || (drag && drag.started)) return; const dy = e.clientY - sw.y0;
+    if (!sw.moved && Math.abs(dy) > 10) { sw.moved = true; if (drag) { clearTimeout(drag.timer); drag = null; } }
+    if (!sw.moved) return; e.preventDefault();
+    const nr = Math.max(0, Math.min(maxRow(), sw.row0 - Math.round(dy / sw.rowPx))); if (nr !== ui.row) { ui.row = nr; render(); }
+  }, { passive: false });
+  const swEnd = () => { if (sw && sw.moved) { suppress = true; setTimeout(() => { suppress = false; }, 80); } sw = null; };
+  window.addEventListener('pointerup', swEnd); window.addEventListener('pointercancel', swEnd);
   window.addEventListener('keydown', e => {
     if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     if (e.key === 'i' || e.key === 'I') toggle(); else if (e.key === 'Escape' && root.classList.contains('open')) { if (ui.modal || ui.sel) { ui.modal = null; ui.sel = null; render(); } else close(); }
@@ -474,8 +452,8 @@ ${slider('Âm lượng nền', 'musicVol', 0, 1, 0.05, '%', 'music')}
   const fit = () => root.style.setProperty('--u', Math.max((root.clientWidth || 1000) / 100, 8)); // cỡ chữ tối thiểu ~7px trên điện thoại nhỏ
   window.addEventListener('resize', fit);
 
-  function open(tab, modal) { if (tab) ui.tab = tab; ui.modal = modal || null; ui.direct = !!modal; root.classList.add('open'); fit(); hooks.onOpen && hooks.onOpen(); render(); }
-  function close() { root.classList.remove('open'); ui.modal = null; ui.sel = null; hooks.onClose && hooks.onClose(); }
+  function open(tab, modal) { const was = root.classList.contains('open'); if (tab) ui.tab = tab; ui.modal = modal || null; ui.direct = !!modal; root.classList.add('open'); fit(); if (!was) hooks.onOpen && hooks.onOpen(); render(); }
+  function close() { if (!root.classList.contains('open')) return; root.classList.remove('open'); ui.modal = null; ui.sel = null; hooks.onClose && hooks.onClose(); }
   function toggle() { root.classList.contains('open') ? close() : open(); }
   return { open, close, toggle, refresh: render, isOpen: () => root.classList.contains('open') };
 }

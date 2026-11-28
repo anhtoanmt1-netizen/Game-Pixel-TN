@@ -1,8 +1,8 @@
 // Cache-first, cập nhật nền (cũng lưu font Montserrat sau lần tải đầu để chơi offline). Đổi V mỗi lần phát hành.
-const V = 'eternal-pixel-v18';
+const V = 'eternal-pixel-v19';
 const CORE = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
-  ...['main', 'data', 'items', 'board', 'hud', 'inv', 'layout', 'save', 'combat', 'touch', 'audio', 'sprites', 'maps', 'themes', 'nav', 'charanim', 'chars', 'wind', 'auto', 'icons', 'forge', 'equipicons', 'state', 'scene-loot', 'scene-combat', 'scene-fx', 'scene-modes'].map(n => `src/${n}.js`),
-  ...['board.jpg', 'equip.png', 'plate_big.png', 'plate_small.png'].map(n => `assets/ui/${n}`),
+  ...['main', 'data', 'items', 'board', 'hud', 'inv', 'layout', 'save', 'combat', 'touch', 'audio', 'sprites', 'maps', 'themes', 'nav', 'charanim', 'chars', 'wind', 'auto', 'icons', 'forge', 'equipicons', 'state', 'scene-loot', 'scene-combat', 'scene-fx', 'scene-modes', 'settings', 'settings-panel', 'map-picker', 'menu'].map(n => `src/${n}.js`),
+  ...['board.webp', 'equip.png', 'plate_big.png', 'plate_small.png'].map(n => `assets/ui/${n}`),
   ...['mage', 'knight', 'elf', 'rogue'].flatMap(c => [`assets/chars/${c}.png`, `assets/chars/${c}.json`, `assets/chars/${c}_portrait.png`]),
   ...['forest', 'cave', 'volcano', 'ice', 'dark'].flatMap(t => [`assets/${t}.png`, `assets/${t}.json`, ...['grass', 'dirt', 'sand', 'stone', 'water', 'shallow', 'meadow'].map(n => `assets/terrain/${t}_${n}.jpg`)]),
   'https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js'];

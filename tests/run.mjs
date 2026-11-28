@@ -17,6 +17,9 @@ import { CHARS } from '../src/chars.js';
 
 let pass = 0, fail = 0;
 const test = (name, fn) => { try { fn(); pass++; console.log('  ok  ' + name); } catch (e) { fail++; console.log('FAIL  ' + name + '\n      ' + e.message); } };
+const pending = []; // test bất đồng bộ: kết quả được gom ở cuối file
+let chain = Promise.resolve(); // chạy tuần tự vì các test dùng chung kho IndexedDB giả
+const atest = (name, fn) => { chain = chain.then(() => fn()).then(() => { pass++; console.log('  ok  ' + name); }, e => { fail++; console.log('FAIL  ' + name + '\n      ' + e.message); }); pending.push(chain); };
 const withRandom = (v, fn) => { const o = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = o; } };
 const newG = () => ({ level: 1, exp: 0, gold: 0, inv: [], eq: {}, cards: [], deck: [], pity: 0, cap: 300, q: {}, sk: {}, mat: { stone: 0 } });
 const mage = CLASSES.mage;
@@ -223,6 +226,8 @@ import * as INV from '../src/inv.js';
 import * as EQ from '../src/equipicons.js';
 import * as IC from '../src/icons.js';
 import * as SV from '../src/save.js';
+import * as ST from '../src/settings.js';
+import * as AUD from '../src/audio.js';
 import { SLOTS } from '../src/items.js';
 test('layout: đủ ô và nằm trong khung 16:9', () => {
   assert.equal(LAYOUT.igrid.length, 42); assert.deepEqual(Object.keys(LAYOUT.eslots).sort(), [...SLOTS].sort());
@@ -283,18 +288,22 @@ try { // kiểm thử khói cho bảng giao diện với DOM giả (không có t
   globalThis.document = { head: mk(), body: mk(), createElement: () => mk(), getElementById: () => null, elementFromPoint: () => null };
   globalThis.window = { addEventListener() {}, confirm: () => true, prompt: () => '1' }; globalThis.alert = () => {}; globalThis.prompt = () => '1'; globalThis.confirm = () => true;
   const { initBoard } = await import('../src/board.js');
-  const G = newG(); G.classId = 'mage'; G.level = 30; G.gold = 99999; G.set = { sfx: true, music: true, vol: 0.5, lowfx: false, zoom: 'near', minimap: true }; G.set.auto = AU.normAuto(); G.st = { kills: 0, boss: 0 }; G.ach = {}; G.pet = null; G.mat = { stone: 500 }; G.area = 'forest';
+  const G = newG(); G.classId = 'mage'; G.level = 30; G.gold = 99999; G.set = { sfxVol: .5, musicVol: .5, uiVol: .5, lowfx: false, zoom: 'near', minimap: true, bgDim: .6, bgCombat: true }; G.set.auto = AU.normAuto(); G.st = { kills: 0, boss: 0 }; G.ach = {}; G.pet = null; G.mat = { stone: 500 }; G.area = 'forest';
   for (let ri = 0; ri < 7; ri++) G.inv.push(I.genItem(20, ri), I.genItem(20, ri, 'weapon', 'dragon')); I.addCard(G, 'wolf'); I.addCard(G, 'sc_power'); G.q = { q1: { p: 5, done: true } };
-  let changed = 0, traveled = null;
-  const api = initBoard(G, { ps: () => ({ hp: 100, maxHp: 200 }), onChange: () => { changed++; }, msg() {}, travel: id => { traveled = id; }, toggleAuto() {} });
+  let changed = 0, traveled = null, openedSettings = 0; const settingsLog = [];
+  const api = initBoard(G, { ps: () => ({ hp: 100, maxHp: 200 }), onChange: () => { changed++; }, msg() {}, travel: id => { traveled = id; }, toggleAuto() {}, openSettings: () => { openedSettings++; }, onSetting: k => settingsLog.push(k) });
   const root = created.find(e => e.id === 'ui'), board = root.firstChild;
   api.open(); const html = () => board.innerHTML, click = d => board.listeners.click({ target: { closest: () => ({ dataset: { ...d } }) } });
   const must = (s, why) => assert.ok(html().includes(s), why || s);
   must('MẶC ĐỒ'); must('Tấn Công'); must('data-drop="eq:weapon"'); must('data-drop="eq:accessory"'); must('Sinh Lực');
   assert.ok((html().match(/data-from="inv"/g) || []).length === 14, 'túi hiển thị đủ 14 món');
-  for (const [t, s] of [['skill', 'Kỹ năng bị động'], ['card', 'Bộ thẻ'], ['quest', 'Nhiệm vụ'], ['map', 'Dịch chuyển'], ['equip', 'Tấn Công']]) { click({ a: 'tab', t }); must(s, 'tab ' + t); }
-  for (const [m, s] of [['set', 'Tầm nhìn'], ['pets', 'Thú đồng hành'], ['craft', 'Chế tạo'], ['ach', 'Thành tựu'], ['filter', 'Lọc'], ['quick', 'Bán nhanh']]) { click({ a: m === 'quick' ? 'quick' : 'modal', m, mode: 'sell' }); must(s, 'modal ' + m); click({ a: 'closemodal' }); }
+  for (const [t, s] of [['skill', 'Kỹ năng bị động'], ['card', 'Thẻ bài'], ['quest', 'Nhiệm vụ'], ['map', 'DỊCH CHUYỂN'], ['equip', 'Tấn Công']]) { click({ a: 'tab', t }); must(s, 'tab ' + t); }
+  for (const [m, s] of [['pets', 'Thú đồng hành'], ['craft', 'Chế tạo'], ['ach', 'Thành tựu'], ['filter', 'Lọc'], ['quick', 'Bán nhanh']]) { click({ a: m === 'quick' ? 'quick' : 'modal', m, mode: 'sell' }); must(s, 'modal ' + m); click({ a: 'closemodal' }); }
+  click({ a: 'modal', m: 'set' }); assert.equal(openedSettings, 1, 'Cài đặt mở bảng riêng ngoài túi đồ'); assert.ok(!html().includes('data-a="set"'), 'không còn bảng cài đặt lồng trong túi đồ');
+  must('data-bgdim', 'có thanh trượt độ mờ nền'); must('data-a="bgcombat"', 'có nút chiến đấu nền');
+  click({ a: 'bgcombat' }); assert.equal(G.set.bgCombat, false); assert.deepEqual(settingsLog, ['bgCombat']); click({ a: 'bgcombat' }); assert.equal(G.set.bgCombat, true);
   const id0 = G.inv[0].id; click({ a: 'sel', id: id0 }); must('Cường Hóa'); must('Đổi Dòng'); must('Thức Tỉnh'); must('Đột Phá'); must('Phân giải'); must('data-a="forge"');
+  click({ a: 'closemodal' }); click({ a: 'closemodal' });
   click({ a: 'lock', id: id0 }); assert.equal(G.inv[0].locked, true); click({ a: 'lock', id: id0 });
   const w = G.inv.find(x => x.slot === 'weapon'); click({ a: 'equip', id: w.id }); assert.equal(G.eq.weapon.id, w.id);
   const gold0 = G.gold, victim = G.inv.find(x => x.ri === 0); click({ a: 'sell', id: victim.id }); assert.ok(G.gold > gold0 && !G.inv.includes(victim));
@@ -303,6 +312,10 @@ try { // kiểm thử khói cho bảng giao diện với DOM giả (không có t
   click({ a: 'grp', g: 'weapon' }); assert.ok(html().includes('data-from="inv"')); click({ a: 'clearf' });
   click({ a: 'sk', k: 'power' }); assert.equal(G.sk.power, 1);
   click({ a: 'travel', id: 'cave' }); assert.equal(traveled, 'cave');
+  // cuộn túi đồ theo hàng (vuốt/lăn chuột/nút): 100 món = 17 hàng, thấy 7 hàng một lúc
+  while (G.inv.length < 100) G.inv.push(I.genItem(20, 0)); click({ a: 'clearf' }); must('Hàng 1–7/17');
+  click({ a: 'rows', d: 1 }); must('Hàng 2–8/17'); click({ a: 'rows', d: 50 }); must('Hàng 11–17/17', 'chặn ở hàng cuối'); click({ a: 'rows', d: -1 }); must('Hàng 10–16/17'); click({ a: 'pg', d: -1 }); must('Hàng 3–9/17'); click({ a: 'rows', d: -99 }); must('Hàng 1–7/17');
+  click({ a: 'grp', g: 'weapon' }); must('Hàng 1–', 'đổi bộ lọc thì về đầu danh sách'); click({ a: 'clearf' });
   click({ a: 'modal', m: 'auto' }); must('Cài đặt Auto'); must('Auto quanh vị trí'); must('Nhặt sau khi hết quái');
   click({ a: 'au', f: 'range', v: 'far' }); assert.equal(G.set.auto.range, 'far'); click({ a: 'au', f: 'mode', v: 'around' }); assert.equal(G.set.auto.mode, 'around'); click({ a: 'au', f: 'pickWhen', v: 'after' }); assert.equal(G.set.auto.pickWhen, 'after');
   click({ a: 'au', f: 'pickMode', v: 'both' }); must('Loại cần nhặt'); must('Phẩm chất cần nhặt'); click({ a: 'aut', f: 'pickKinds', v: 'weapon' }); assert.ok(!G.set.auto.pickKinds.includes('weapon')); click({ a: 'aut', f: 'pickRar', v: '0' }); assert.ok(!G.set.auto.pickRar.includes(0));
@@ -499,13 +512,108 @@ test('bộ icon vector: đủ hình, STAT_ICON trỏ đúng, icon lạ trả r�
   for (const t of ['atk', 'hp', 'def', 'crit_rate', 'crit_damage', 'lifesteal', 'dodge', 'exp_bonus', 'gold_bonus', 'luck', 'skill_dmg', 'cdr', 'boss_dmg', 'heal_kill']) assert.ok(IC.STAT_ICON[t], t);
   assert.equal(IC.icon('khong-co'), ''); assert.equal(new Set(need.map(k => IC.ICONS[k]())).size, need.length, 'mỗi icon một hình riêng');
 });
+console.log('May mắn');
+const lcg = seed => () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+test('may mắn cao thì đồ rơi bậc cao rõ rệt hơn (cùng một dãy số ngẫu nhiên)', () => {
+  const run = luck => { const rng = lcg(7), G = { pity: -1e9 }, c = Array(7).fill(0); for (let i = 0; i < 30000; i++) c[I.rollRarity(G, 0, luck, rng)]++; return c; };
+  const lo = run(0), hi = run(120), top = c => c[4] + c[5] + c[6], rare = c => c[2] + c[3] + c[4] + c[5] + c[6];
+  assert.ok(top(hi) > top(lo) * 3, `Huyền thoại+: ${top(lo)} → ${top(hi)}`); assert.ok(rare(hi) > rare(lo) * 1.8, `Hiếm+: ${rare(lo)} → ${rare(hi)}`); assert.ok(hi[0] < lo[0], 'đồ thường giảm');
+  const mid = run(40); assert.ok(top(lo) < top(mid) && top(mid) < top(hi), 'tăng dần theo may mắn');
+  assert.deepEqual(run(-50), lo, 'may mắn âm không làm xấu đi');
+});
+test('may mắn: hệ số theo bậc và xác suất rơi có trần', () => {
+  assert.equal(I.luckMult(0, 6), 1); assert.equal(I.luckMult(60, 1), 1); assert.equal(I.luckMult(60, 2), 2); assert.equal(I.luckMult(60, 6), 6);
+  assert.equal(I.dropChance(0.35, 0), 0.35); assert.ok(Math.abs(I.dropChance(0.07, 150) - 0.14) < 1e-9); assert.equal(I.dropChance(0.6, 9999), 0.95);
+});
+test('may mắn: thẻ bổ sung bậc cao ra nhiều hơn khi may mắn cao', () => {
+  const ids = Object.keys(I.CARDS), hiRi = id => I.RARITY.findIndex(r => r.id === I.CARDS[id].rarity) >= 4;
+  const frac = luck => { const rng = lcg(11); let n = 0; for (let i = 0; i < 20000; i++) if (hiRi(I.pickCardByLuck(ids, luck, rng))) n++; return n / 20000; };
+  assert.ok(frac(150) > frac(0) * 1.5, `${frac(0)} → ${frac(150)}`); assert.equal(I.pickCardByLuck([], 50), null);
+});
+test('may mắn thật sự nối vào derive (trang bị và thẻ may mắn cộng dồn)', () => {
+  const g = newG(), base = I.derive({ ...CLASSES.mage, id: 'mage' }, g, CFG).luck;
+  const ring = I.genItem(30, 3, 'ring', undefined, 'mage'); ring.affixes = [{ type: 'luck', v: 9 }]; ring.main = { type: 'atk', v: 5 }; g.eq.ring1 = ring;
+  assert.ok(Math.abs(I.derive({ ...CLASSES.mage, id: 'mage' }, g, CFG).luck - base - 9) < 1e-6);
+});
+
+console.log('Nhiều nhân vật, cài đặt chung');
+// IndexedDB giả trong bộ nhớ để kiểm tra các ô lưu độc lập
+const idbStore = new Map();
+globalThis.indexedDB = { open() { const r = {}; const os = { get: k => ({ result: idbStore.has(k) ? structuredClone(idbStore.get(k)) : undefined }), put: (v, k) => { idbStore.set(k, structuredClone(v)); return {}; }, delete: k => { idbStore.delete(k); return {}; } };
+  const db = { createObjectStore() {}, transaction() { const tx = { objectStore: () => os }; setTimeout(() => tx.oncomplete && tx.oncomplete(), 0); return tx; } };
+  setTimeout(() => { r.result = db; r.onupgradeneeded && r.onupgradeneeded(); r.onsuccess && r.onsuccess(); }, 0); return r; } };
+const sessionMem = new Map(); globalThis.sessionStorage = { getItem: k => sessionMem.has(k) ? sessionMem.get(k) : null, setItem: (k, v) => sessionMem.set(k, String(v)), removeItem: k => sessionMem.delete(k) };
+const localMem = new Map(); globalThis.localStorage = { getItem: k => localMem.has(k) ? localMem.get(k) : null, setItem: (k, v) => localMem.set(k, String(v)), removeItem: k => localMem.delete(k) };
+atest('4 ô nhân vật: dữ liệu độc lập, xóa một ô không ảnh hưởng ô khác', async () => {
+  assert.equal(SV.SLOTS, 4);
+  const mk = (cls, name, lv) => ({ ...SV.newProgress(cls, name), level: lv, gold: lv * 10, inv: [I.genItem(lv, 3, 'weapon', undefined, cls)], q: { [`q${lv}`]: { done: true } }, sk: { power: lv } });
+  const a = mk('knight', 'An', 5), b = mk('mage', 'Bình', 12), c = mk('elf', 'Chi', 20), d = mk('rogue', 'Dũng', 33);
+  for (const [n, x] of [[1, a], [2, b], [3, c], [4, d]]) assert.equal(await SV.saveSlot(n, x), true);
+  const ls = await SV.listSlots(); assert.deepEqual(ls.map(s => s.data.name), ['An', 'Bình', 'Chi', 'Dũng']); assert.deepEqual(ls.map(s => s.data.classId), ['knight', 'mage', 'elf', 'rogue']);
+  assert.deepEqual(ls.map(s => s.data.level), [5, 12, 20, 33]); assert.deepEqual(ls.map(s => Object.keys(s.data.q)[0]), ['q5', 'q12', 'q20', 'q33']);
+  assert.notEqual(ls[0].data.inv[0].id, ls[1].data.inv[0].id);
+  b.gold = 999999; b.level = 13; await SV.saveSlot(2, b); const ls2 = await SV.listSlots(); assert.equal(ls2[1].data.gold, 999999); assert.deepEqual([ls2[0].data.gold, ls2[2].data.gold, ls2[3].data.gold], [50, 200, 330], 'ô khác không bị đổi');
+  assert.equal(await SV.deleteSlot(3), true); const ls3 = await SV.listSlots(); assert.equal(ls3[2].data, null); assert.deepEqual([ls3[0].data.name, ls3[1].data.name, ls3[3].data.name], ['An', 'Bình', 'Dũng']);
+  assert.equal(await SV.saveSlot(3, mk('mage', 'Em', 1)), true); assert.equal((await SV.listSlots())[2].data.name, 'Em', 'tạo lại vào ô trống');
+});
+atest('ô đang chơi: save/load đi theo ô được chọn, không có ô thì không ghi', async () => {
+  SV.clearActiveSlot(); assert.equal(SV.activeSlot(), 0); assert.equal(await SV.save({ ...SV.newProgress('mage', 'X') }), false); assert.equal(await SV.load(), null);
+  assert.throws(() => SV.setActiveSlot(0)); assert.throws(() => SV.setActiveSlot(5));
+  SV.setActiveSlot(2); assert.equal(SV.activeSlot(), 2); const g = await SV.load(); assert.equal(g.name, 'Bình'); g.level = 77; await SV.save(g);
+  assert.equal((await SV.loadSlot(2)).level, 77); assert.equal((await SV.loadSlot(1)).level, 5); SV.clearActiveSlot(); assert.equal(SV.activeSlot(), 0);
+});
+atest('bản lưu cũ (một nhân vật) được chuyển vào ô 1 đúng một lần', async () => {
+  idbStore.clear(); localMem.clear(); const old = { ...SV.newProgress('elf', 'Cũ'), level: 40, name: undefined };
+  idbStore.set('main', { v: 1, data: old }); assert.equal(await SV.adoptLegacy(), true); const s1 = await SV.loadSlot(1); assert.equal(s1.level, 40); assert.equal(s1.classId, 'elf');
+  await SV.deleteSlot(1); assert.equal(await SV.adoptLegacy(), false, 'không chuyển lại sau khi người chơi đã xóa'); assert.equal(await SV.loadSlot(1), null);
+  idbStore.clear(); localMem.clear(); assert.equal(await SV.adoptLegacy(), false, 'không có bản cũ thì không làm gì');
+});
+atest('hỏng bản chính của một ô thì phục hồi từ bản sao lưu của chính ô đó', async () => {
+  idbStore.clear(); await SV.saveSlot(1, { ...SV.newProgress('mage', 'A'), level: 3 }); await SV.saveSlot(1, { ...SV.newProgress('mage', 'A'), level: 4 }); await SV.saveSlot(2, { ...SV.newProgress('knight', 'B'), level: 9 });
+  idbStore.set('slot:1', { v: SV.VER, data: { broken: true } }); const r = await SV.loadSlot(1); assert.equal(r.level, 3); assert.equal((await SV.loadSlot(2)).level, 9);
+});
+test('nhân vật mới: dữ liệu khởi đầu hợp lệ, tên được làm sạch', () => {
+  const p = SV.newProgress('rogue', '  Một cái tên rất rất rất dài vượt giới hạn  '); assert.ok(SV.valid(p)); assert.equal(p.classId, 'rogue'); assert.equal(p.level, 1); assert.equal(p.name.length, 16); assert.equal(SV.newProgress('mage', '   ').name, 'Nhà Thám Hiểm');
+  const q = SV.newProgress('mage', 'A'); q.inv.push(1); q.mat.stone = 5; assert.deepEqual(SV.newProgress('mage', 'B').inv, [], 'mỗi nhân vật có mảng riêng'); assert.equal(SV.newProgress('mage', 'B').mat.stone, 0);
+});
+test('cài đặt dùng chung: mặc định, kẹp giá trị, nhập giá trị cũ (sfx/music/vol), ưu tiên cài đặt đã lưu', () => {
+  const D = ST.DEFAULTS; assert.equal(D.bgCombat, true, 'chiến đấu nền bật mặc định'); assert.ok(D.sfxVol > 0 && D.musicVol > 0 && D.uiVol > 0);
+  const r0 = ST.resolveSettings({}, {}); assert.deepEqual(r0, D);
+  const old = ST.resolveSettings({ sfx: true, music: false, vol: 0.75, zoom: 'wide', minimap: false }, {}); assert.equal(old.sfxVol, .75); assert.equal(old.uiVol, .75); assert.equal(old.musicVol, 0); assert.equal(old.zoom, 'wide'); assert.equal(old.minimap, false);
+  assert.equal(ST.resolveSettings({ sfx: false, vol: .5 }, {}).sfxVol, 0);
+  const sv = ST.resolveSettings({ vol: .9 }, { sfxVol: .2, bgDim: 5, zoom: 'xx' }); assert.equal(sv.sfxVol, .2); assert.equal(sv.bgDim, 1, 'kẹp 0..1'); assert.equal(sv.zoom, 'near');
+  ST.saveGlobal({ sfxVol: .3, musicVol: .1, uiVol: .9, lowfx: true, minimap: false, zoom: 'ultra', bgDim: .4, bgCombat: false, auto: { x: 1 }, level: 50 });
+  const g = ST.loadGlobal(); assert.deepEqual(Object.keys(g).sort(), [...ST.GLOBAL_KEYS].sort(), 'chỉ lưu khóa cài đặt chung'); assert.equal(ST.resolveSettings({ vol: .9 }).sfxVol, .3); assert.equal(ST.resolveSettings({}).bgCombat, false);
+  localMem.clear();
+});
+test('ba kênh âm lượng độc lập: hiệu ứng, nhạc nền, âm thanh khác', () => {
+  for (const n of ['charge', 'ok', 'tier', 'fail', 'tab', 'level', 'pick']) assert.ok(AUD.UI_SFX.has(n), n);
+  for (const n of ['hit', 'crit', 'skill', 'hurt']) assert.ok(!AUD.UI_SFX.has(n), n);
+  const src = fs.readFileSync(new URL('../src/audio.js', import.meta.url), 'utf8'); assert.ok(src.includes('s.musicVol') && src.includes('s.sfxVol') && src.includes('s.uiVol'));
+});
+test('menu và cài đặt: không phụ thuộc Phaser; mọi chỗ gọi thao tác chính có mặt', () => {
+  const root = new URL('../', import.meta.url), rd = f => fs.readFileSync(new URL(f, root), 'utf8');
+  for (const f of ['src/menu.js', 'src/settings-panel.js', 'src/map-picker.js', 'src/settings.js']) assert.ok(!/Phaser\.[A-Za-z]/.test(rd(f)), f + ' không được dùng Phaser');
+  const sp = rd('src/settings-panel.js'); for (const k of ['sfxVol', 'musicVol', 'uiVol', 'bgDim', 'bgCombat', 'lowfx', 'minimap', 'toMenu', 'exportData', 'importData']) assert.ok(sp.includes(k), 'cài đặt thiếu ' + k);
+  const mn = rd('src/menu.js'); for (const k of ['listSlots', 'saveSlot', 'deleteSlot', 'newProgress', 'setActiveSlot', 'introModal', 'createModal', 'deleteModal']) assert.ok(mn.includes(k), 'menu thiếu ' + k);
+  const main = rd('src/main.js'); for (const k of ['toMenu', 'clearActiveSlot', 'panelOpen', 'syncPause', 'createMapPicker', 'createSettingsPanel']) assert.ok(main.includes(k), 'main thiếu ' + k);
+  const hud = rd('src/hud.js'); assert.ok(hud.includes('h.maps') && hud.includes("'#mapname'") && hud.includes('mini'), 'HUD: bấm minimap/tên bản đồ mở danh sách bản đồ');
+  const idx = rd('index.html'); assert.ok(idx.indexOf('runMenu') < idx.indexOf("src/main.js"), 'menu chạy trước game');
+});
+test('chiến đấu nền: tạm dừng chỉ khi tắt chức năng, và nhân vật tự đánh khi mở bảng', () => {
+  const root = new URL('../', import.meta.url), main = fs.readFileSync(new URL('src/main.js', root), 'utf8');
+  assert.ok(/syncPause\(\) \{ if \(this\.panelCount > 0 && !G\.set\.bgCombat\) this\.scene\.pause\(\); else this\.scene\.resume\(\); \}/.test(main), 'pause chỉ khi bgCombat tắt');
+  assert.ok(!/onOpen: \(\) => this\.scene\.pause\(\)/.test(main), 'không còn tạm dừng vô điều kiện');
+  assert.ok(main.includes('if (panel) v.set(0, 0)') && main.includes('manual || this.auto || panel'), 'mở bảng: không di chuyển, tự đánh trong tầm');
+});
+
 console.log('Đóng gói');
 test('service worker cache đủ mọi module được nạp và mọi ảnh giao diện tồn tại', () => {
   const root = new URL('../', import.meta.url), sw = fs.readFileSync(new URL('service-worker.js', root), 'utf8');
   const seen = new Set(); const walk = f => { if (seen.has(f)) return; seen.add(f); const t = fs.readFileSync(new URL(f, root), 'utf8'); for (const m of t.matchAll(/from '\.\/([\w-]+)\.js'/g)) walk(`src/${m[1]}.js`); };
-  walk('src/main.js');
+  walk('src/main.js'); walk('src/menu.js'); // index.html nạp menu trước rồi mới tới main
   for (const f of seen) { const n = f.replace('src/', '').replace('.js', ''); assert.ok(new RegExp(`'${n}'`).test(sw), `service worker thiếu ${f}`); assert.ok(fs.existsSync(new URL(f, root)), f); }
-  for (const n of ['board.jpg', 'equip.png', 'plate_big.png', 'plate_small.png']) { assert.ok(sw.includes(`'${n}'`), n); assert.ok(fs.existsSync(new URL('assets/ui/' + n, root)), n); }
+  for (const n of ['board.webp', 'equip.png', 'plate_big.png', 'plate_small.png']) { assert.ok(sw.includes(`'${n}'`), n); assert.ok(fs.existsSync(new URL('assets/ui/' + n, root)), n); }
   const dead = fs.readdirSync(new URL('src/', root)).filter(f => f.endsWith('.js') && !seen.has('src/' + f)); assert.deepEqual(dead, [], 'mã không được dùng: ' + dead);
 });
 test('main.js được tách mô-đun: lõi gọn, mọi phương thức mixin có mặt trên GameScene', () => {
@@ -514,5 +622,6 @@ test('main.js được tách mô-đun: lõi gọn, mọi phương thức mixin c
   for (const g of ['loot', 'combat', 'fx', 'modes']) { const t = fs.readFileSync(new URL(`src/scene-${g}.js`, root), 'utf8'); assert.ok(t.includes(`export const ${g}Methods`), g); for (const m of t.matchAll(/^  (?:async )?([A-Za-z_]\w*)\(.*\) \{/gm)) assert.ok(!new RegExp(`^  ${m[1]}\\(`, 'm').test(main), `${m[1]} trùng trong main.js`); }
 });
 
+await Promise.all(pending);
 console.log(`\n${pass} đạt, ${fail} lỗi`);
 process.exit(fail ? 1 : 0);

@@ -1,0 +1,16 @@
+<!doctype html><meta charset=utf-8><base href="/"><title>menu</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+<body style="margin:0;background:#000">
+<div id=stage style="position:relative;width:1280px;height:720px;overflow:hidden;--u:12.8"></div>
+<script type=module>
+import {saveSlot,newProgress,clearActiveSlot,deleteSlot,activeSlot} from './src/save.js';
+import {runMenu} from './src/menu.js';
+import * as I from './src/items.js';
+const n=+(new URLSearchParams(location.search).get('seed')||0);
+clearActiveSlot(); try{localStorage.setItem('ep_legacy_done','1')}catch{}
+for(let i=1;i<=4;i++) await deleteSlot(i);
+const defs=[['knight','Arthur',42,'cave',123456],['mage','Lyra',18,'forest',5400],['elf','Sylvan',65,'ice',999999],['rogue','Kage',7,'forest',320]];
+for(let i=0;i<n;i++){const [c,name,lv,area,gold]=defs[i];await saveSlot(i+1,{...newProgress(c,name),level:lv,area,gold});}
+window.chosen=null; runMenu(document.getElementById('stage')).then(v=>{window.chosen=v});
+window.ready=true;
+</script>

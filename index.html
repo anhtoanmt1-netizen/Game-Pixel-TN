@@ -51,8 +51,10 @@
   });
 </script>
 <script type="module">
-  try { await window.phaserReady; await import('./src/main.js'); }
-  catch (e) { console.error(e); document.body.insertAdjacentHTML('beforeend', '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000d;color:#ffd98a;font:600 16px Montserrat,sans-serif;text-align:center;padding:2em;z-index:99">Không tải được thư viện game (Phaser).<br>Hãy kiểm tra kết nối mạng, hoặc đặt file vendor/phaser.min.js rồi tải lại trang.</div>'); }
+  // Thứ tự: menu chọn nhân vật (hiện ngay, trong lúc Phaser tải) → vào game với nhân vật đã chọn.
+  const fail = e => { console.error(e); document.body.insertAdjacentHTML('beforeend', '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000d;color:#ffd98a;font:600 16px Montserrat,sans-serif;text-align:center;padding:2em;z-index:200">Không tải được game.<br>Hãy kiểm tra kết nối mạng (thư viện Phaser), hoặc đặt file vendor/phaser.min.js rồi tải lại trang.</div>'); };
+  window.phaserReady.catch(fail);
+  try { const { runMenu } = await import('./src/menu.js'); await runMenu(); await window.phaserReady; await import('./src/main.js'); } catch (e) { fail(e); }
 </script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");</script>
 </body>

@@ -6,8 +6,8 @@ window.__log=[];
 window.Phaser={AUTO:0,Scene:class{constructor(k){this.k=k}},Game:class{constructor(c){window.__game=c}},Scale:{FIT:1,CENTER_BOTH:1},Math:{Distance:{Between:(a,b,c,d)=>Math.hypot(c-a,d-b)},Clamp:(v,a,b)=>Math.min(b,Math.max(a,v)),Between:(a,b)=>a},Physics:{Arcade:{}},Display:{Color:{}},Geom:{},Utils:{},Input:{Keyboard:{KeyCodes:{}}}};
 </script>
 <script type=module>
-import {save} from './src/save.js';
-await save({level:1,exp:0,gold:0,inv:[],eq:{},cards:[],deck:[],classId:'mage'});
+import {saveSlot,newProgress,setActiveSlot} from './src/save.js';
+await saveSlot(1,newProgress('mage','Thử'));setActiveSlot(1);
 try { await import('./src/main.js'); window.__log.push('MAIN_OK'); } catch(e){ window.__log.push('MAIN_ERR '+e.message); }
 window.ready=true;
 </script>
